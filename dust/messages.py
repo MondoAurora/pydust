@@ -366,7 +366,7 @@ def start_queue_processor(queue, log):
             if item == None:
                 time.sleep(0.5)
             else:
-                _log.debug("Processing item: {}".format([i.global_id() for i in item]))
+                #_log.debug("Processing item: {}".format([i.global_id() for i in item]))
                 for entity in item:
                     try:
                         _listeners[entity.access(Operation.GET, None, MessageMeta.callback_name)][1](

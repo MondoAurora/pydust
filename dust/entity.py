@@ -32,6 +32,7 @@ class EntityBaseMeta(MetaProps):
     unit = (Datatypes.ENTITY, ValueTypes.SINGLE, 1, 13)
     meta_type = (Datatypes.ENTITY, ValueTypes.SINGLE, 2, 14)
     entity_id = (Datatypes.INT, ValueTypes.SINGLE, 3, 15)
+    committed = (Datatypes.BOOL, ValueTypes.SINGLE, 4 ,16)
 
 class EntityTypes(FieldProps):
     type_meta = (UNIT_ENTITY_META, TypeMeta, 1)
@@ -135,12 +136,13 @@ class Store():
     def _add_entity_to_store(e):
         entity_map = globals()["_entity_map"]
 
-        unit_field, meta_type_field, entity_id_field = Store._get_base_fields()
+        unit_field, meta_type_field, entity_id_field, committed_field = Store._get_base_fields()
 
         entity_map[e.global_id()] = ({
             unit_field: e.unit.global_id(), 
             entity_id_field: e.entity_id, 
-            meta_type_field: e.meta_type.global_id()
+            meta_type_field: e.meta_type.global_id(),
+            committed_field: e.committed
         }, e)
 
 
@@ -289,23 +291,32 @@ class Store():
                 last_idx += 1
 
             if operation == Operation.SET or operation == Operation.ADD or operation == Operation.CHANGE:
-                rv = Store._access_data_set_value(parent, remaining_path[last_idx - 1], value, operation)
-                if _messages_create_message:
+                changed, rv = Store._access_data_set_value(parent, remaining_path[last_idx - 1], value, operation)
+                if changed and _messages_create_message:
                     _create_message(MessageType.ENTITY_ACCESS, {"path": last_entity_path, "op": operation}, [last_global_id])
 
             elif operation == Operation.GET:
-                if _messages_create_message:
-                    _create_message(MessageType.ENTITY_ACCESS, {"path": last_entity_path, "op": operation}, [last_global_id])
+                #if _messages_create_message:
+                #    _create_message(MessageType.ENTITY_ACCESS, {"path": last_entity_path, "op": operation}, [last_global_id])
                 rv = last_obj
 
             elif operation == Operation.VISIT:
-                if _messages_create_message:
-                    _create_message(MessageType.ENTITY_ACCESS, {"path": last_entity_path, "op": operation}, [last_global_id])
+                #if _messages_create_message:
+                #    _create_message(MessageType.ENTITY_ACCESS, {"path": last_entity_path, "op": operation}, [last_global_id])
                 rv = last_obj
+
+                if callable(value):
+                    if isinstance(last_obj, list) or isinstance(last_obj, set):
+                        for e in last_obj:
+                            value(e)
+                    elif isinstance(last_obj, dict):
+                        for key, value in last_obj.items():
+                            value(key, value)
 
             return rv
 
 
+    @staticmethod
     def _access_data_create_container(obj, field, key):
         if isinstance(obj, Entity):
             entities = globals()["_entity_map"]
@@ -321,45 +332,79 @@ class Store():
                 e_map[global_field_name] = []
                 return e_map[global_name]
 
+    @staticmethod
+    def _set_uncommitted(e, e_map):
+        e.committed = False
+        committed_field = Store._get_base_fields()[3]
+        e_map[committed_field] = False
+
+        return True
+
+    @staticmethod
     def _access_data_set_value(obj, field, value, operation):
         if isinstance(obj, Entity):
+            changed = False
+
             entities = globals()["_entity_map"]
             enum_map = globals()["_enum_map"]
 
             e_map = entities[obj.global_id()][0]
+            entity = entities[obj.global_id()][1]
             global_field_name = enum_map[field]
             field_config = enum_map[global_field_name]
 
-            e_map = entities[obj.global_id()][0]
-
             if field.datatype == Datatypes.ENTITY and isinstance(value, Entity):
                 if field.valuetype == ValueTypes.LIST:
+                    changed = Store._set_uncommitted(entity, e_map)
                     e_map.setdefault(global_field_name, []).append(value.global_id())
                 elif field.valuetype == ValueTypes.SET:
-                    e_map.setdefault(global_field_name, set()).add(value.global_id())
+                    if not global_field_name in e_map or not value.global_id in e_map[global_field_name]:
+                        e_map.setdefault(global_field_name, set()).add(value.global_id())
+                        changed = Store._set_uncommitted(entity, e_map)
                 else:
-                    e_map[global_field_name] = value.global_id()
+                    if e_map.get(global_field_name, None) != value:
+                        e_map[global_field_name] = value.global_id()
+                        changed = Store._set_uncommitted(entity, e_map)
             else:
                 if field.valuetype == ValueTypes.LIST and not isinstance(value, list):
+                    changed = Store._set_uncommitted(entity, e_map)
                     e_map.setdefault(global_field_name, []).append(value)
                 elif field.valuetype == ValueTypes.SET and not isinstance(value, set):
-                    if isinstance(value, list) or isinstance(value, set):
-                        e_map.setdefault(global_field_name, set()).update(value)
+                    if isinstance(value, list):
+                        all_included = False
+                        if global_field_name in e_map:
+                            all_included = True
+                            old_values = e_map[global_field_name]
+                            for v in value:
+                                all_included = v in old_values
+                                if not all_included:
+                                    break
+                        if not all_included:
+                            e_map.setdefault(global_field_name, set()).update(value)
+                            changed = Store._set_uncommitted(entity, e_map)
                     else:
-                        e_map.setdefault(global_field_name, set()).add(value)
+                        if not global_field_name in e_map or not value in e_map[global_field_name]:
+                            e_map.setdefault(global_field_name, set()).add(value)
+                            changed = Store._set_uncommitted(entity, e_map)
                 else:
                     if operation == Operation.CHANGE:
                         e_map[global_field_name] += value
                         value = e_map[global_field_name]
+                        changed = Store._set_uncommitted(entity, e_map)
                     else:
-                        e_map[global_field_name] = value
+                        if e_map.get(global_field_name, None) != value:
+                            e_map[global_field_name] = value
+                            changed = Store._set_uncommitted(entity, e_map)
 
-            return value
+            return (changed, value)
 
+        return (False, None)
 
+    @staticmethod
     def _access_data_get_value(obj, key, default_value):
         entities = globals()["_entity_map"]
         enum_map = globals()["_enum_map"]
+
 
         if isinstance(obj, Entity):
             global_name = enum_map[key]
@@ -518,6 +563,7 @@ class Entity():
         self.unit = unit
         self.entity_id = entity_id
         self.meta_type = meta_type
+        self.committed = False
 
     def access(self, operation, value, *path):
         enum_map = globals()["_enum_map"]
@@ -581,7 +627,7 @@ class Entity():
         entity_map = globals()["_entity_map"]
         enum_map = globals()["_enum_map"]
 
-        unit_field, meta_type_field, entity_id_field = Store._get_base_fields()
+        unit_field, meta_type_field, entity_id_field, _ = Store._get_base_fields()
 
         unit_parts = e_map[unit_field].split(":")
 
