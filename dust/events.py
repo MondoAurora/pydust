@@ -10,8 +10,8 @@ from dateutil import parser
 from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps
 from dust.entity import Store
 
-UNIT_ENTITY = "events"
-UNIT_ENTITY_META = "events_meta"
+UNIT_EVENTS = "events"
+UNIT_EVENTS_META = "events_meta"
 
 UTC = pytz.timezone('UTC')
 
@@ -36,21 +36,24 @@ class EventType(Enum):
     DATETIME = 2
 
 class EventMeta(MetaProps):
-    start = (Datatypes.NUMERIC, ValueTypes.SINGLE, 1, 2)
+    start = (Datatypes.INT, ValueTypes.SINGLE, 1, 2)
     duration_in_sec = (Datatypes.INT, ValueTypes.SINGLE, 2, 3)
     repeat = (Datatypes.INT, ValueTypes.SINGLE, 3, 4)
     repeat_value = (Datatypes.INT, ValueTypes.LIST, 4, 5)
     repeat_until = (Datatypes.INT, ValueTypes.LIST, 5, 6)
 
 class EventTypes(FieldProps):
-    event = (UNIT_ENTITY_META, EventMeta, 1)
+    event = (UNIT_EVENTS_META, EventMeta, 1)
 
-Store.create_unit(UNIT_ENTITY)
+Store.create_unit(UNIT_EVENTS)
 Store.load_types_from_enum(EventTypes)
 
-def parse_event(event_value_start, event_type, duration_in_sec=None, repeat_type=RepeatTypes.NO_REPEAT, repeat_value=None, repeat_until=None, ignoretz=False, tzinfos=None, tz=None):
+def parse_event(event_value_start, event_type, iso=False, duration_in_sec=None, repeat_type=RepeatTypes.NO_REPEAT, repeat_value=None, repeat_until=None, ignoretz=False, tzinfos=None, tz=None):
     try:
-        dt = parser.parse(event_value_start, ignoretz=ignoretz, tzinfos=tzinfos)
+        if iso:
+            dt = parser.isoparse(event_value_start)
+        else:
+            dt = parser.parse(event_value_start, ignoretz=ignoretz, tzinfos=tzinfos)
         return get_event(dt, event_type, duration_in_sec, repeat_type, repeat_value, repeat_until, tz)
     except:
         traceback.print_exc()
@@ -58,7 +61,7 @@ def parse_event(event_value_start, event_type, duration_in_sec=None, repeat_type
     return None
 
 def get_event(dt, event_type, duration_in_sec=None, repeat_type=RepeatTypes.NO_REPEAT, repeat_value=None, repeat_until=None, tz=None):
-    event = Store.access(Operation.GET, None, UNIT_ENTITY, None, EventTypes.event)
+    event = Store.access(Operation.GET, None, UNIT_EVENTS, None, EventTypes.event)
     if not tz is None:
         if _is_naive(dt):
             dt = tz.localize(dt, is_dst=None)
