@@ -641,8 +641,10 @@ class Entity():
             if not field in [unit_field, meta_type_field, entity_id_field]:
                 field_parts = field.split(":")
                 field_config = Store._get_field_config(field_parts[0], field_parts[1], field_parts[2])
-                e.access(Operation.SET, value, field_config["_enum"])
-
+                if field_config["valuetype"] == ValueTypes.SET and isinstance(value, list):
+                    e.access(Operation.SET, set(value), field_config["_enum"])
+                else:
+                    e.access(Operation.SET, value, field_config["_enum"])
         return e
 
 _entity_map = {}
