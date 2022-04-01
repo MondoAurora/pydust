@@ -21,17 +21,17 @@ class MessageType(Enum):
     ENTITY_ACCESS = 0
 
 class MessageMeta(MetaProps):
-    message_type = (Datatypes.STRING, ValueTypes.SINGLE, 1, 3)
-    message_params = (Datatypes.JSON, ValueTypes.MAP, 2, 4)
-    datetime = (Datatypes.ENTITY, ValueTypes.SINGLE, 3, 5)
-    entities = (Datatypes.ENTITY, ValueTypes.SET, 4, 6)
-    callback_name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 7)
+    message_type = (Datatypes.STRING, ValueTypes.SINGLE, 1, 100)
+    message_params = (Datatypes.JSON, ValueTypes.MAP, 2, 101)
+    datetime = (Datatypes.ENTITY, ValueTypes.SINGLE, 3, 102)
+    entities = (Datatypes.ENTITY, ValueTypes.SET, 4, 103)
+    callback_name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 104)
 
 class MessageQueueInfoMeta(MetaProps):
-    chunksize = (Datatypes.INT, ValueTypes.SINGLE, 1, 8)
-    size = (Datatypes.INT, ValueTypes.SINGLE, 2, 9)
-    tail = (Datatypes.INT, ValueTypes.LIST, 3, 10)
-    head = (Datatypes.INT, ValueTypes.LIST, 4, 11)
+    chunksize = (Datatypes.INT, ValueTypes.SINGLE, 1, 200)
+    size = (Datatypes.INT, ValueTypes.SINGLE, 2, 201)
+    tail = (Datatypes.INT, ValueTypes.LIST, 3, 202)
+    head = (Datatypes.INT, ValueTypes.LIST, 4, 203)
 
 class MessageTypes(FieldProps):
     message = (UNIT_MESSAGES_META, MessageMeta, 1)
@@ -211,6 +211,7 @@ class MessageQueue():
     def _put(self, item):
         self.serializer.dump(item, self.headf)
         self.headf.flush()
+        print(str(self.info.access(Operation.GET, None, MessageQueueInfoMeta.head)))
         hnum, hpos, _ = self.info.access(Operation.GET, None, MessageQueueInfoMeta.head)
         hpos += 1
         if hpos == self.info.access(Operation.GET, None, MessageQueueInfoMeta.chunksize):
@@ -358,15 +359,22 @@ def unregister_listener(name):
     if name in _listeners:
         del _listeners[name]
 
+_stop = False
+
+def signal_finish():
+    global _stop
+    _stop = True
 
 def start_queue_processor(queue, log):
+    global _stop
+
     while True:
         try:
             item = _queue.get()
             if item == None:
                 time.sleep(0.5)
             else:
-                #_log.debug("Processing item: {}".format([i.global_id() for i in item]))
+                _log.debug("Processing item: {}".format([i.global_id() for i in item]))
                 for entity in item:
                     try:
                         _listeners[entity.access(Operation.GET, None, MessageMeta.callback_name)][1](
@@ -376,6 +384,9 @@ def start_queue_processor(queue, log):
                         )
                     except KeyError:
                         _log.error("Invalid callback registered: {}".format(entity.access(Operation.GET, None, MessageMeta.callback_name)))
+
+            if _stop:
+                break
         except EmptyMessageQueue:
             time.sleep(0.5)
         except KeyboardInterrupt:
@@ -402,5 +413,5 @@ def create_message(message_type, message_params, entities):
 _queue = MessageQueue(PATH)
 _listeners = {}
 
-_queue_processor = threading.Thread(target=start_queue_processor, args=(_queue, _log, ), daemon=True)
+_queue_processor = threading.Thread(target=start_queue_processor, args=(_queue, _log, ), daemon=False)
 _queue_processor.start()

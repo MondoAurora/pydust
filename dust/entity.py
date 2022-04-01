@@ -15,24 +15,24 @@ UNIT_ENTITY = "entity"
 UNIT_ENTITY_META = "entity_meta"
 
 class UnitMeta(MetaProps):
-    name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 5)
-    id_cnt = (Datatypes.INT, ValueTypes.SINGLE, 2, 6)
-    meta_types = (Datatypes.ENTITY, ValueTypes.SET, 3, 7)
+    name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 100)
+    id_cnt = (Datatypes.INT, ValueTypes.SINGLE, 2, 101)
+    meta_types = (Datatypes.ENTITY, ValueTypes.SET, 3, 102)
 
 class TypeMeta(MetaProps):
-    name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 8)
-    fields = (Datatypes.ENTITY, ValueTypes.SET, 2, 9)
+    name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 200)
+    fields = (Datatypes.ENTITY, ValueTypes.SET, 2, 201)
 
 class MetaField(MetaProps):
-    name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 10)
-    global_name = (Datatypes.STRING, ValueTypes.SINGLE, 2, 11)
-    order = (Datatypes.INT, ValueTypes.SINGLE, 3, 12)
+    name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 300)
+    global_name = (Datatypes.STRING, ValueTypes.SINGLE, 2, 301)
+    order = (Datatypes.INT, ValueTypes.SINGLE, 3, 302)
 
 class EntityBaseMeta(MetaProps):
-    unit = (Datatypes.ENTITY, ValueTypes.SINGLE, 1, 13)
-    meta_type = (Datatypes.ENTITY, ValueTypes.SINGLE, 2, 14)
-    entity_id = (Datatypes.INT, ValueTypes.SINGLE, 3, 15)
-    committed = (Datatypes.BOOL, ValueTypes.SINGLE, 4 ,16)
+    unit = (Datatypes.ENTITY, ValueTypes.SINGLE, 1, 400)
+    meta_type = (Datatypes.ENTITY, ValueTypes.SINGLE, 2, 401)
+    entity_id = (Datatypes.INT, ValueTypes.SINGLE, 3, 402)
+    committed = (Datatypes.BOOL, ValueTypes.SINGLE, 4 ,403)
 
 class EntityTypes(FieldProps):
     type_meta = (UNIT_ENTITY_META, TypeMeta, 1)
@@ -641,11 +641,7 @@ class Entity():
             if not field in [unit_field, meta_type_field, entity_id_field]:
                 field_parts = field.split(":")
                 field_config = Store._get_field_config(field_parts[0], field_parts[1], field_parts[2])
-                if field_config["valuetype"] in [ValueTypes.SET, ValueTypes.LIST] and ( isinstance(value, list) or isinstance(value, set) ):
-                    for element in value:
-                        e.access(Operation.ADD, element, field_config["_enum"])
-                else:
-                    e.access(Operation.SET, value, field_config["_enum"])
+                e.access(Operation.SET, value, field_config["_enum"])
 
         return e
 

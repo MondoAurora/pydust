@@ -8,8 +8,8 @@ UNIT_TEMLATES = "templates"
 UNIT_TEMLATES_META = "templates_meta"
 
 class TemplateMeta(MetaProps):
-    name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 2)
-    text = (Datatypes.STRING, ValueTypes.MAP, 2, 3)
+    name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 100)
+    text = (Datatypes.STRING, ValueTypes.MAP, 2, 101)
 
 class TemplateTypes(FieldProps):
     template = (UNIT_TEMLATES_META, TemplateMeta, 1)

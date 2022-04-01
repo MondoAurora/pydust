@@ -12,16 +12,16 @@ UNIT_SLACK = "slack"
 UNIT_SLACK_META = "slack_meta"
 
 class SlackChannelMeta(MetaProps):
-    name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 3)
-    webhook_url = (Datatypes.STRING, ValueTypes.SINGLE, 2, 4)
-    test_webhook_url = (Datatypes.STRING, ValueTypes.SINGLE, 3, 5)
+    name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 100)
+    webhook_url = (Datatypes.STRING, ValueTypes.SINGLE, 2, 101)
+    test_webhook_url = (Datatypes.STRING, ValueTypes.SINGLE, 3, 102)
 
 class SlackNotificationMeta(MetaProps):
-    notification = (Datatypes.STRING, ValueTypes.SINGLE, 1, 6)
-    channel = (Datatypes.ENTITY, ValueTypes.SINGLE, 2, 7)
-    report_time = (Datatypes.ENTITY, ValueTypes.SINGLE, 3, 8)
-    sent = (Datatypes.BOOL, ValueTypes.SINGLE, 4, 9)
-    test = (Datatypes.BOOL, ValueTypes.SINGLE, 4, 10)
+    notification = (Datatypes.STRING, ValueTypes.SINGLE, 1, 200)
+    channel = (Datatypes.ENTITY, ValueTypes.SINGLE, 2, 201)
+    report_time = (Datatypes.ENTITY, ValueTypes.SINGLE, 3, 202)
+    sent = (Datatypes.BOOL, ValueTypes.SINGLE, 4, 203)
+    test = (Datatypes.BOOL, ValueTypes.SINGLE, 4, 204)
 
 class SlackTypes(FieldProps):
     channel = (UNIT_SLACK_META, SlackChannelMeta, 1)
@@ -69,7 +69,7 @@ def register_channel(channel_name, webhook_url, test_webhook_url=None, register_
 
 
 def _notify_slack(message_type, message_params, entities):
-    #print(str(entities))
+    print(str(entities))
     for global_id in entities:
         entity = Store.access(Operation.GET, None, global_id)
         notification = entity.access(Operation.GET, None, SlackNotificationMeta.notification)

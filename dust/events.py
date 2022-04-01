@@ -36,11 +36,11 @@ class EventType(Enum):
     DATETIME = 2
 
 class EventMeta(MetaProps):
-    start = (Datatypes.INT, ValueTypes.SINGLE, 1, 2)
-    duration_in_sec = (Datatypes.INT, ValueTypes.SINGLE, 2, 3)
-    repeat = (Datatypes.INT, ValueTypes.SINGLE, 3, 4)
-    repeat_value = (Datatypes.INT, ValueTypes.LIST, 4, 5)
-    repeat_until = (Datatypes.INT, ValueTypes.LIST, 5, 6)
+    start = (Datatypes.INT, ValueTypes.SINGLE, 1, 100)
+    duration_in_sec = (Datatypes.INT, ValueTypes.SINGLE, 2, 101)
+    repeat = (Datatypes.INT, ValueTypes.SINGLE, 3, 102)
+    repeat_value = (Datatypes.INT, ValueTypes.LIST, 4, 103)
+    repeat_until = (Datatypes.INT, ValueTypes.LIST, 5, 104)
 
 class EventTypes(FieldProps):
     event = (UNIT_EVENTS_META, EventMeta, 1)
