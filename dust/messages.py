@@ -360,10 +360,14 @@ def unregister_listener(name):
         del _listeners[name]
 
 _stop = False
+_queue = MessageQueue(PATH)
+_listeners = {}
 
 def signal_finish():
     global _stop
+
     _stop = True
+    _queue.put(Store.access(Operation.GET, None, UNIT_MESSAGES, None, MessageTypes.message))
 
 def start_queue_processor(queue, log):
     global _stop
@@ -383,12 +387,15 @@ def start_queue_processor(queue, log):
                             entity.access(Operation.GET, None, MessageMeta.entities)
                         )
                     except KeyError:
-                        _log.error("Invalid callback registered: {}".format(entity.access(Operation.GET, None, MessageMeta.callback_name)))
-
+                        if entity.access(Operation.GET, None, MessageMeta.callback_name):
+                            _log.error("Invalid callback registered: {}".format(entity.access(Operation.GET, None, MessageMeta.callback_name)))
             if _stop:
                 break
+
         except EmptyMessageQueue:
             time.sleep(0.5)
+            if _stop:
+                break
         except KeyboardInterrupt:
             _log.warning("Keyboard interrupt received")
             break
@@ -410,8 +417,6 @@ def create_message(message_type, message_params, entities):
                         message.access(Operation.ADD, entities, MessageMeta.entities)
             _queue.put(message)
 
-_queue = MessageQueue(PATH)
-_listeners = {}
 
 _queue_processor = threading.Thread(target=start_queue_processor, args=(_queue, _log, ), daemon=False)
 _queue_processor.start()
