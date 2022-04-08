@@ -9,7 +9,10 @@ from datetime import datetime
 from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps
 from importlib import import_module
 
+import threading
+
 _messages_create_message = None
+_store_lock = threading.RLock()
 
 UNIT_ENTITY = "entity"
 UNIT_ENTITY_META = "entity_meta"
@@ -39,7 +42,6 @@ class EntityTypes(FieldProps):
     _entity_base = (UNIT_ENTITY_META, EntityBaseMeta, 2)
     unit = (UNIT_ENTITY_META, UnitMeta, 3)
     meta_field = (UNIT_ENTITY_META, MetaField, 4)
-
 
 class Store():
     @staticmethod
@@ -214,9 +216,14 @@ class Store():
         for unit, field_meta_types in unit_meta_types.items():
             for field_meta_type in field_meta_types:
                 unit.access(Operation.ADD, field_meta_type, UnitMeta.meta_types)
-            
+
     @staticmethod
     def access(operation, value, *path):
+        with _store_lock:
+            return Store._access(operation, value, *path)
+
+    @staticmethod
+    def _access(operation, value, *path):
         entities = globals()["_entity_map"]
         enum_map = globals()["_enum_map"]
 
@@ -429,98 +436,6 @@ class Store():
             raise Exception("Not possible to request path element on sets.")
 
         return default_value
-
-    @staticmethod
-    def _access(operation, value, *path):
-        entities = globals()["_entity_map"]
-        enum_map = globals()["_enum_map"]
-
-        if operation == Operation.VISIT:
-            if len(path) == 3:
-                # Allow range in entity_id ?
-                global_id = Entity._ref(path[0], entity_id, path[1].name)
-                if global_id in entities:
-                    return entities[global_id][1]
-                else:
-                    return value
-            elif len(path) < 3:
-                def unit_filter(e, *path):
-                    return e.unit.access(Operation.GET, None, UnitMeta.name) == path[0]
-
-                def type_filter(e, *path):
-                    return e.unit.access(Operation.GET, None, UnitMeta.name) == path[0] and \
-                           e.meta_type.access(Operation.GET, None, TypeMeta.name) == path[1].name
-                
-                entity_filter = None
-                if len(path) == 2:
-                    entity_filter = type_filter
-                if len(path) == 1:
-                    entity_filter = unit_filter
-
-                array = []
-                for e_map_tuple in filter(entity_filter, entities.values()):
-                    array.append(e_map_tuple[1])
-
-                return array
-
-
-        entity_id = path[1]
-        if path[1] == None:
-            entity_id = Store.increment_unit_counter(path[0])
-
-        global_id = Entity._ref(path[0], entity_id, path[2])
-        if not global_id in entities:
-            Store._create_entity(path[0], entity_id, path[2])
-        if operation == Operation.GET:
-            if len(path) == 3:
-                return entities[global_id][1]
-            else:
-                global_field_name = Store._global_field_name(path[0], path[2].name, path[3].name)
-                value = entities[global_id][0][global_field_name]
-
-                field_config = Store._get_field_config(path[0], path[2], path[3])
-                if field_config["datatype"] == Datatypes.ENTITY:
-                    if value in entities:
-                        return entities[value][1]
-                    else:
-                        parts = value.split(":")
-                        return Store._create_entity(parts[0], int(parts[1]), parts[2])
-                else:
-                    return value
-
-        elif operation == Operation.SET:
-            global_field_name = Store._global_field_name(path[0], path[2].name, path[3].name)
-            if isinstance(value, Entity):
-                entities[global_id][0][global_field_name] = value.global_id()
-            else:
-                entities[global_id][0][global_field_name] = value
-
-        elif operation == Operation.CHANGE:
-            global_field_name = Store._global_field_name(path[0], path[2].name, path[3].name)
-            entities[global_id][0][global_field_name] += value
-            return entities[global_id][0][global_field_name]
-
-        elif operation == Operation.ADD:
-            global_field_name = Store._global_field_name(path[0], path[2].name, path[3].name)
-            field_config = Store._get_field_config(path[0], path[2], path[3])
-            if isinstance(value, Entity):
-                if field_config["valuetype"] == ValueTypes.SET:
-                    if not global_field_name in entities[global_id][0]:
-                        entities[global_id][0][global_field_name] = []
-                    if not value.global_id() in entities[global_id][0][global_field_name]:
-                        entities[global_id][0][global_field_name].append(value.global_id())
-                    #entities[global_id][0].setdefault(global_field_name, set()).add(value.global_id())
-                else:
-                    entities[global_id][0].setdefault(global_field_name, []).append(value.global_id())
-            else:
-                if field_config["valuetype"] == ValueTypes.SET:
-                    if not global_field_name in entities[global_id][0]:
-                        entities[global_id][0][global_field_name] = []
-                    if not value in entities[global_id][0][global_field_name]:
-                        entities[global_id][0][global_field_name].append(value)
-                    #entities[global_id][0].setdefault(global_field_name, set()).add(value)
-                else:
-                    entities[global_id][0].setdefault(global_field_name, []).append(value)
 
     @staticmethod
     def _get_field_config(unit_name, meta_type, field):

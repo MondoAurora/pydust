@@ -6,8 +6,8 @@ import tempfile
 import threading
 import codecs
 import traceback
+import time
 
-from time import time
 from enum import Enum
 from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps
 from dust.entity import Store, Entity
