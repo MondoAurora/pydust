@@ -20,6 +20,8 @@ FORMAT_DATETIME_EU = "%d.%m.%Y %H:%M:%S"
 FORMAT_DATETIME_SHORT_EU = "%d.%m.%y %H:%M"
 FORMAT_DATETIME_EU_TZ = "%d.%m.%Y %H:%M:%S %Z"
 
+FORMAT_DATE_EU = "%d.%m.%Y"
+
 class RepeatTypes(Enum):
     NO_REPEAT = 0
     DAILY = 1

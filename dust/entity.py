@@ -29,7 +29,7 @@ class TypeMeta(MetaProps):
 class MetaField(MetaProps):
     name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 300)
     global_name = (Datatypes.STRING, ValueTypes.SINGLE, 2, 301)
-    order = (Datatypes.INT, ValueTypes.SINGLE, 3, 302)
+    field_order = (Datatypes.INT, ValueTypes.SINGLE, 3, 302)
 
 class EntityBaseMeta(MetaProps):
     unit = (Datatypes.ENTITY, ValueTypes.SINGLE, 1, 400)
@@ -42,6 +42,13 @@ class EntityTypes(FieldProps):
     _entity_base = (UNIT_ENTITY_META, EntityBaseMeta, 2)
     unit = (UNIT_ENTITY_META, UnitMeta, 3)
     meta_field = (UNIT_ENTITY_META, MetaField, 4)
+
+def get_unit_deps_tuple(module_name, unit_name, meta_type_enums):
+    module = import_module(module_name)
+    unit_name_attr = getattr(module, unit_name)
+    meta_type_enums_attr = getattr(module, meta_type_enums)
+    dep_func = getattr(module, "get_unit_dependencies", None)
+    return (unit_name_attr, meta_type_enums_attr, dep_func)
 
 class Store():
     @staticmethod
@@ -149,8 +156,8 @@ class Store():
 
 
     @staticmethod
-    def increment_unit_counter(unit_name):
-        unit = globals()["_enum_map"][unit_name]
+    def increment_unit_counter(unit):
+        unit = globals()["_enum_map"][unit]
         return unit.access(Operation.CHANGE, 1, UnitMeta.id_cnt)
 
     @staticmethod
@@ -162,12 +169,12 @@ class Store():
         for meta_type in e:
             for field in meta_type.fields_enum:
                 global_name = Store._global_field_name(meta_type.unit_name, meta_type.name, field.name)
-                enum_map[global_name] = {"datatype": field.value[0], "valuetype": field.value[1], "id": field.id_value, "order": field.order_value, "_enum": field}
+                enum_map[global_name] = {"datatype": field.value[0], "valuetype": field.value[1], "id": field.id_value, "field_order": field.order_value, "_enum": field}
                 enum_map[field] = global_name
 
         for base_field in EntityBaseMeta:
             global_name = Store._global_field_name(base_field.unit, EntityTypes._entity_base, base_field.name)
-            enum_map[global_name] = {"datatype": base_field.value[0], "valuetype": base_field.value[1], "id": field.id_value, "order": base_field.order_value, "_enum": base_field}
+            enum_map[global_name] = {"datatype": base_field.value[0], "valuetype": base_field.value[1], "id": field.id_value, "field_order": base_field.order_value, "_enum": base_field}
             enum_map[base_field] = global_name
 
         for meta_type in e:
@@ -195,7 +202,7 @@ class Store():
 
                 field_entity = Store.access(Operation.GET, None, meta_type.unit_name, field.id_value, EntityTypes.meta_field)
                 field_entity.access(Operation.SET, field.name, MetaField.name)
-                field_entity.access(Operation.SET, field.order_value, MetaField.order)
+                field_entity.access(Operation.SET, field.order_value, MetaField.field_order)
                 field_entity.access(Operation.SET, global_name, MetaField.global_name)
                 field_entities.append(field_entity)
 
@@ -238,7 +245,8 @@ class Store():
             unit, entity_id, meta_type = Entity._resolve_global_id(path[0])
             if entity_id is None:
                 # path is done with 3 parts
-                if len(path) > 2 and ( path[1] is None or isinstance(path[1], int) ) and isinstance( path[2], FieldProps ):
+                if len(path) > 2 and ( path[1] is None or isinstance(path[1], int) ) and \
+                    ( isinstance( path[2], FieldProps ) or isinstance( path[2], Entity ) ):
                     if path[1] is None:
                         entity_id = Store.increment_unit_counter(path[0])
                     else:
@@ -536,6 +544,13 @@ class Entity():
         json_map = {}
         self.__to_json(json_map)
         return json_map
+
+    def set_committed(self):
+        entity_map = globals()["_entity_map"]
+        self.committed = True
+
+        _, _, _, committed_field = Store._get_base_fields()
+        entity_map[self.global_id()][0][committed_field] = True
 
     @staticmethod
     def from_json(e_map):

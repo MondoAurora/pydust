@@ -10,12 +10,17 @@ import time
 
 from enum import Enum
 from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps
-from dust.entity import Store, Entity
+from dust.entity import Store, Entity, get_unit_deps_tuple
 
 PATH = "/var/local/beaconing/messagequeue"
 
 UNIT_MESSAGES = "messages"
 UNIT_MESSAGES_META = "messages_meta"
+
+def get_unit_dependencies():
+    return [
+        get_unit_deps_tuple("dust.events", "UNIT_EVENTS", "EventTypes")
+    ]
 
 class MessageType(Enum):
     ENTITY_ACCESS = 0

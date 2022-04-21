@@ -4,12 +4,17 @@ import json
 
 from datetime import datetime
 from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps
-from dust.entity import Store, Entity, _entity_map
+from dust.entity import Store, Entity, _entity_map, get_unit_deps_tuple
 from dust.events import get_event, EventType
 from dust.messages import register_listener, unregister_listener
 
 UNIT_SLACK = "slack"
 UNIT_SLACK_META = "slack_meta"
+
+def get_unit_dependencies():
+    return [
+        get_unit_deps_tuple("dust.events", "UNIT_EVENTS", "EventTypes")
+    ]
 
 class SlackChannelMeta(MetaProps):
     name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 100)

@@ -26,7 +26,7 @@ README = (HERE / "README.md").read_text()
 # This call to setup() does all the work
 setup(
     name="PyDust",
-    version="0.0.5",
+    version="0.0.6",
     description="Read the latest Real Python tutorials",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -39,7 +39,7 @@ setup(
         "Intended Audience :: Developers",
         "Programming Language :: Python :: 3",
     ],
-    packages=["dust"],
+    packages=["dust","dust.persist"],
     include_package_data=True,
     install_requires=["pytz", "python-dateutil", "pyyaml", "jinja2", "requests"]
 )
