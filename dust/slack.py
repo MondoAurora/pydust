@@ -10,6 +10,8 @@ from dust.messages import register_listener, unregister_listener
 
 UNIT_SLACK = "slack"
 UNIT_SLACK_META = "slack_meta"
+UNIT_ID = 7
+UNIT_META_ID = 8
 
 def get_unit_dependencies():
     return [
@@ -32,8 +34,8 @@ class SlackTypes(FieldProps):
     channel = (UNIT_SLACK_META, SlackChannelMeta, 1)
     notification = (UNIT_SLACK_META, SlackNotificationMeta, 2)
 
-Store.create_unit(UNIT_SLACK)
-Store.load_types_from_enum(SlackTypes)
+Store.create_unit(UNIT_SLACK, UNIT_ID)
+Store.load_types_from_enum(SlackTypes, UNIT_META_ID)
 
 _channels = {}
 

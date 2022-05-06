@@ -16,6 +16,8 @@ PATH = "/var/local/beaconing/messagequeue"
 
 UNIT_MESSAGES = "messages"
 UNIT_MESSAGES_META = "messages_meta"
+UNIT_ID = 5
+UNIT_META_ID = 6
 
 def get_unit_dependencies():
     return [
@@ -42,8 +44,8 @@ class MessageTypes(FieldProps):
     message = (UNIT_MESSAGES_META, MessageMeta, 1)
     message_queue_info = (UNIT_MESSAGES_META, MessageQueueInfoMeta, 2)
 
-Store.create_unit(UNIT_MESSAGES)
-Store.load_types_from_enum(MessageTypes)
+Store.create_unit(UNIT_MESSAGES, UNIT_ID)
+Store.load_types_from_enum(MessageTypes, UNIT_META_ID)
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)

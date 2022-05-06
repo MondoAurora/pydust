@@ -16,6 +16,8 @@ _store_lock = threading.RLock()
 
 UNIT_ENTITY = "entity"
 UNIT_ENTITY_META = "entity_meta"
+UNIT_ID = 1
+UNIT_META_ID = 2
 
 class UnitMeta(MetaProps):
     name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 100)
@@ -60,14 +62,15 @@ class Store():
             Store.load_types_from_dict(loaded__meta_types)
 
     @staticmethod
-    def create_unit(unit_name):
+    def create_unit(unit_name, unit_id):
         entity_map = globals()["_entity_map"]
         enum_map = globals()["_enum_map"]
 
         if not unit_name in [UNIT_ENTITY, UNIT_ENTITY_META] and not unit_name in enum_map:
-            unit = Store.access(Operation.GET, None, UNIT_ENTITY, None, EntityTypes.unit)
+            unit = Store.access(Operation.GET, None, UNIT_ENTITY, unit_id, EntityTypes.unit)
             enum_map[unit_name] = unit
             enum_map[unit] = unit_name
+            #print("Unit name: {} ({}), global id: {}".format(unit_name, unit.entity_id, unit.global_id()))
             unit.access(Operation.SET, 0, UnitMeta.id_cnt)
             unit.access(Operation.SET, unit_name, UnitMeta.name)
         
@@ -156,12 +159,22 @@ class Store():
 
 
     @staticmethod
-    def increment_unit_counter(unit):
-        unit = globals()["_enum_map"][unit]
-        return unit.access(Operation.CHANGE, 1, UnitMeta.id_cnt)
+    def increment_unit_counter(unit, requested_id):
+        if isinstance(unit, str):
+            unit = globals()["_enum_map"][unit]
+        unit_entity_map = globals()["_entity_map"][unit.global_id()][0]
+
+        if requested_id is None:
+            return unit.access(Operation.CHANGE, 1, UnitMeta.id_cnt)
+        elif not unit.entity_id is None:
+            current_cnt = unit_entity_map.get("entity_meta:unit:id_cnt")
+            if current_cnt == None or current_cnt < requested_id:
+                unit_entity_map["entity_meta:unit:id_cnt"] = requested_id
+
+            return requested_id
 
     @staticmethod
-    def load_types_from_enum(e):
+    def load_types_from_enum(e, unit_meta_id):
         entity_map = globals()["_entity_map"]
         #meta_ref = globals()["_meta_ref"]
         enum_map = globals()["_enum_map"]
@@ -173,12 +186,12 @@ class Store():
                 enum_map[field] = global_name
 
         for base_field in EntityBaseMeta:
-            global_name = Store._global_field_name(base_field.unit, EntityTypes._entity_base, base_field.name)
+            global_name = Store._global_field_name(UNIT_ENTITY_META, EntityTypes._entity_base.name, base_field.name)
             enum_map[global_name] = {"datatype": base_field.value[0], "valuetype": base_field.value[1], "id": field.id_value, "field_order": base_field.order_value, "_enum": base_field}
             enum_map[base_field] = global_name
 
         for meta_type in e:
-            unit = Store.create_unit(meta_type.unit_name)
+            unit = Store.create_unit(meta_type.unit_name, unit_meta_id)
 
             if meta_type in enum_map:
                 field_meta_type = enum_map[meta_type]
@@ -191,6 +204,9 @@ class Store():
                 enum_map[meta_type] = field_meta_type
                 enum_map[field_meta_type] = meta_type
                 enum_map[field_meta_type.global_id()] = meta_type
+
+                #print("Unit name: {} ({}), meta_type: {}, global id: {}".format(unit.access(Operation.GET, None, UnitMeta.name), field_meta_type.unit.global_id(), meta_type.name ,field_meta_type.global_id()))
+
 
             field_config = {}
 
@@ -247,10 +263,7 @@ class Store():
                 # path is done with 3 parts
                 if len(path) > 2 and ( path[1] is None or isinstance(path[1], int) ) and \
                     ( isinstance( path[2], FieldProps ) or isinstance( path[2], Entity ) ):
-                    if path[1] is None:
-                        entity_id = Store.increment_unit_counter(path[0])
-                    else:
-                        entity_id = path[1]
+                    entity_id = Store.increment_unit_counter(path[0], path[1])
                     local_ref = Entity._ref(path[0], entity_id, path[2])
                     idx = 3
             else:
@@ -550,6 +563,7 @@ class Entity():
         self.committed = True
 
         _, _, _, committed_field = Store._get_base_fields()
+
         entity_map[self.global_id()][0][committed_field] = True
 
     @staticmethod
@@ -580,7 +594,7 @@ class Entity():
 _entity_map = {}
 _enum_map = {}
 
-Store.load_types_from_enum(EntityTypes)
+Store.load_types_from_enum(EntityTypes, UNIT_META_ID)
 _messages_module = import_module("dust.messages")
 MessageType = getattr(_messages_module, "MessageType")
 MessageTypes = getattr(_messages_module, "MessageTypes")

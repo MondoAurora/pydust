@@ -12,9 +12,10 @@ from dust.entity import Store
 
 UNIT_EVENTS = "events"
 UNIT_EVENTS_META = "events_meta"
+UNIT_ID = 3
+UNIT_META_ID = 4
 
 UTC = pytz.timezone('UTC')
-
 
 FORMAT_DATETIME_EU = "%d.%m.%Y %H:%M:%S"
 FORMAT_DATETIME_SHORT_EU = "%d.%m.%y %H:%M"
@@ -40,15 +41,15 @@ class EventType(Enum):
 class EventMeta(MetaProps):
     start = (Datatypes.INT, ValueTypes.SINGLE, 1, 100)
     duration_in_sec = (Datatypes.INT, ValueTypes.SINGLE, 2, 101)
-    repeat = (Datatypes.INT, ValueTypes.SINGLE, 3, 102)
+    repeat = (Datatypes.STRING, ValueTypes.SINGLE, 3, 102)
     repeat_value = (Datatypes.INT, ValueTypes.LIST, 4, 103)
     repeat_until = (Datatypes.INT, ValueTypes.LIST, 5, 104)
 
 class EventTypes(FieldProps):
     event = (UNIT_EVENTS_META, EventMeta, 1)
 
-Store.create_unit(UNIT_EVENTS)
-Store.load_types_from_enum(EventTypes)
+Store.create_unit(UNIT_EVENTS, UNIT_ID)
+Store.load_types_from_enum(EventTypes, UNIT_META_ID)
 
 def parse_event(event_value_start, event_type, iso=False, duration_in_sec=None, repeat_type=RepeatTypes.NO_REPEAT, repeat_value=None, repeat_until=None, ignoretz=False, tzinfos=None, tz=None):
     try:

@@ -1,1 +1,1 @@
-__all__ = ["sqlpersist"]
+__all__ = ["sqlpersist","mysqlpersist"]

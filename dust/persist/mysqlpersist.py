@@ -1,5 +1,7 @@
-import pysqlite3
+import mysql.connector
+from mysql.connector import errorcode
 import traceback
+import os
 
 from dust.persist.sqlpersist import SqlPersist
 
@@ -7,9 +9,9 @@ from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps
 from dust.entity import Entity
 
 SQL_TYPE_MAP = {
-    Datatypes.INT: "INTEGER",
-    Datatypes.NUMERIC: "REAL",
-    Datatypes.BOOL: "INTEGER",
+    Datatypes.INT: "INT",
+    Datatypes.NUMERIC: "DOUBLE",
+    Datatypes.BOOL: "TINYINT",
     Datatypes.STRING: "TEXT",
     Datatypes.BYTES: "BLOB",
     Datatypes.JSON: "TEXT",
@@ -41,7 +43,7 @@ INSERT INTO {{sql_table.table_name}} (\
 {% endfor %}\
 ) VALUES (\
 {% for field in sql_table.fields %}\
-?{% if not loop.last %},{% endif %}\
+%({{ field.field_name }})s{% if not loop.last %},{% endif %}\
 {% endfor %}\
 )\
 "
@@ -55,23 +57,31 @@ FROM {{sql_table.table_name}} \
 {% if filters %}\
 WHERE \
 {% for filter in filters %}\
-filter[0] filter[1] ? {% if not loop.last %}AND {% endif %}\
+{{ filter[0] }} {{ filter[1] }} %({{ filter[0] }})s {% if not loop.last %}AND {% endif %}\
 {% endfor %}\
 {% endif %}\
 "
 
-DB_FILE = "dust.db"
+MYSQL_USER = os.environ.get('MYSQL_USER')
+MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD')
+MYSQL_HOST = os.environ.get('MYSQL_HOST')
+MYSQL_DB = os.environ.get('MYSQL_DB')
 
-class SqlitePersist(SqlPersist):
+class MySQLPersist(SqlPersist):
     def __init__(self):
         super().__init__(**self.__db_api_kwargs())
 
     def __create_connection(self):
         conn = None
         try:
-            conn = pysqlite3.connect(DB_FILE)
-        except Exception as e:
-            print(e)
+            conn = mysql.connector.connect(user=MYSQL_USER, password=MYSQL_PASSWORD, host=MYSQL_HOST, database=MYSQL_DB, charset='utf8', use_unicode=True)
+        except mysql.connector.Error as err:
+            if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+                print("Something is wrong with your user name or password")
+            elif err.errno == errorcode.ER_BAD_DB_ERROR:
+                print("Database does not exist")
+            else:
+                print(err)
 
         return conn
 
@@ -82,7 +92,7 @@ class SqlitePersist(SqlPersist):
 
     def __create_cursor(self, conn):
         if conn:
-            return conn.cursor()
+            return conn.cursor(buffered=True)
 
     def __close_cursor(self, c):
         if c:
@@ -97,22 +107,24 @@ class SqlitePersist(SqlPersist):
         }
 
     def create_exectute_params(self):
-        return []
+        return {}
 
     def add_execute_param(self, values, name, value):
-        values.append(value)
+        values[name] = value
 
     def table_exits(self, table_name, conn):
         try:
-            cur = conn.cursor()
-            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
-            rows = cur.fetchall()
+            cursor = self.__create_cursor(conn)
+            cursor.execute("SELECT * FROM information_schema.tables WHERE table_schema = %(table_schema)s AND table_name = %(table_name)s LIMIT 1;", {"table_schema": MYSQL_DB, "table_name": table_name})
+            rows = cursor.fetchall()
 
             for row in rows:
                 if row[0] == table_name:
                     return True
         except:
             traceback.print_exc()
+        finally:
+            self.__close_cursor(cursor)
 
         return False
 
@@ -123,13 +135,15 @@ class SqlitePersist(SqlPersist):
             return CREATE_TABLE_TEMPLATE 
 
     def create_table(self, sql, conn):
+        cursor = None
         try:
-            cursor = conn.cursor()
+            cursor = self.__create_cursor(conn)
             cursor.execute(sql)
         except:
+            print(sql)
             traceback.print_exc()
         finally:
-            cursor.close()
+            self.__close_cursor(cursor)
 
     def insert_into_table_template(self):
         return INSERT_INTO_TABLE_TEMPLATE
@@ -158,7 +172,9 @@ class SqlitePersist(SqlPersist):
             return value
 
     def sql_type(self, datatype, valuetype, primary_key=False):
-        if valuetype == ValueTypes.SINGLE:
+        if primary_key and datatype == Datatypes.STRING:
+            return "VARCHAR(100)"
+        elif valuetype == ValueTypes.SINGLE:
             return SQL_TYPE_MAP[datatype]
         else:
             return "TEXT"
