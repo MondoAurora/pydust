@@ -62,6 +62,15 @@ WHERE \
 {% endif %}\
 "
 
+UPDATE_TEMPLATE = "\
+UPDATE {{sql_table.table_name}} SET \
+{% for field in sql_table.fields %}\
+{% if not field.primary_key and not field.base_field %}{{ field.field_name }} = %({{ field.field_name }})s{% if not loop.last %},{% endif %}{% endif %} \
+{% endfor %}\
+WHERE \
+{% for field in sql_table.primary_keys %}{{ field.field_name }} = %({{ field.field_name }})s{% if not loop.last %},{% endif %}{% endfor %} \
+"
+
 MYSQL_USER = os.environ.get('MYSQL_USER')
 MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD')
 MYSQL_HOST = os.environ.get('MYSQL_HOST')
@@ -150,6 +159,9 @@ class MySQLPersist(SqlPersist):
 
     def select_template(self, filters):
         return SELECT_TEMPLATE
+
+    def update_template(self):
+        return UPDATE_TEMPLATE
 
     def convert_value_to_db(self, field, value):
         if field.datatype == Datatypes.BOOL:

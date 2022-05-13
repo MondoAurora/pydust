@@ -6,7 +6,7 @@ import inspect
 from enum import Enum
 from collections import namedtuple
 from datetime import datetime
-from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps
+from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps, Committed
 from importlib import import_module
 
 import threading
@@ -37,7 +37,7 @@ class EntityBaseMeta(MetaProps):
     unit = (Datatypes.ENTITY, ValueTypes.SINGLE, 1, 400)
     meta_type = (Datatypes.ENTITY, ValueTypes.SINGLE, 2, 401)
     entity_id = (Datatypes.INT, ValueTypes.SINGLE, 3, 402)
-    committed = (Datatypes.BOOL, ValueTypes.SINGLE, 4 ,403)
+    committed = (Datatypes.STRING, ValueTypes.SINGLE, 4 ,403)
 
 class EntityTypes(FieldProps):
     type_meta = (UNIT_ENTITY_META, TypeMeta, 1)
@@ -154,7 +154,7 @@ class Store():
             unit_field: e.unit.global_id(), 
             entity_id_field: e.entity_id, 
             meta_type_field: e.meta_type.global_id(),
-            committed_field: e.committed
+            committed_field: e.committed.name
         }, e)
 
 
@@ -362,9 +362,11 @@ class Store():
 
     @staticmethod
     def _set_uncommitted(e, e_map):
-        e.committed = False
+        if e.committed == Committed.SAVED:
+            e.committed = Committed.UPDATED
+
         committed_field = Store._get_base_fields()[3]
-        e_map[committed_field] = False
+        e_map[committed_field] = e.committed.name
 
         return True
 
@@ -493,13 +495,48 @@ class Store():
 
         return entities
 
+    @staticmethod
+    def get_meta_type_enum(entity):
+        enum_map = globals()["_enum_map"]
+        if isinstance(entity, Entity):
+            return enum_map[entity.meta_type]
+        elif isinstance(entity, dict):
+            _, meta_type_field, _,  _ = Store._get_base_fields()
+            return enum_map[entity[meta_type_field]]
+
+    @staticmethod
+    def get_global_fieldname(field):
+        enum_map = globals()["_enum_map"]
+        return enum_map[field]
+
+    @staticmethod
+    def global_id(entity):
+        if isinstance(entity, Entity):
+            return entity.global_id()
+        elif isinstance(entity, dict):
+            unit_field, meta_type_field, entity_id_field,  _ = Store._get_base_fields()
+            unit = Store.access(Operation.GET, None, entity[unit_field])
+            meta_type = Store.access(Operation.GET, None, entity[meta_type_field])
+            return Entity._ref(unit, entity[entity_id_field], meta_type)
+
+    @staticmethod
+    def concat_field_values(entity, fields, separator="#"):
+        values = []
+        template = separator.join(["{}" for i in range(len(fields))])
+        for field in fields:
+            if isinstance(entity, Entity):
+                values.append(entity.access(Operation.GET, None, field))
+            elif isinstance(entity, dict):
+                values.append(entity.get(Store.get_global_fieldname(field)))
+
+        return template.format(*values)
 
 class Entity():
     def __init__(self, unit, entity_id, meta_type):
         self.unit = unit
         self.entity_id = entity_id
         self.meta_type = meta_type
-        self.committed = False
+        self.committed = Committed.CREATED
 
     def access(self, operation, value, *path):
         enum_map = globals()["_enum_map"]
@@ -529,7 +566,7 @@ class Entity():
                 entity = globals()["_entity_map"].get(value, (None, None))[1]
                 unit = enum_map.get(parts[0], None)
                 if unit and isinstance(unit, Entity) and enum_map[unit.meta_type] == EntityTypes.unit:
-                    if entity.meta_type and isinstance(entity.meta_type, Entity) and entity.meta_type in enum_map:
+                    if entity and entity.meta_type and isinstance(entity.meta_type, Entity) and entity.meta_type in enum_map:
                         return (unit, entity_id, entity.meta_type)
 
         return (None, None, None)
@@ -560,35 +597,43 @@ class Entity():
 
     def set_committed(self):
         entity_map = globals()["_entity_map"]
-        self.committed = True
+        self.committed = Committed.SAVED
 
         _, _, _, committed_field = Store._get_base_fields()
 
-        entity_map[self.global_id()][0][committed_field] = True
+        entity_map[self.global_id()][0][committed_field] = self.committed.name
 
     @staticmethod
-    def from_json(e_map):
+    def from_json(e_map, force_new_id=False):
         entity_map = globals()["_entity_map"]
         enum_map = globals()["_enum_map"]
 
-        unit_field, meta_type_field, entity_id_field, _ = Store._get_base_fields()
+        unit_field, meta_type_field, entity_id_field, committed_field = Store._get_base_fields()
 
         unit_parts = e_map[unit_field].split(":")
+
+        if force_new_id:
+            entity_id = None
+        else:
+            entity_id = int(e_map[entity_id_field])
 
         unit = Store.access(Operation.GET, None, UNIT_ENTITY, int(unit_parts[1]), EntityTypes.unit)
         unit_name = unit.access(Operation.GET, None, UnitMeta.name)
         meta_type = enum_map[e_map[meta_type_field]]
 
-        e = Store.access(Operation.GET, None, unit_name, int(e_map[entity_id_field]), meta_type)
+        e = Store.access(Operation.GET, None, unit_name, entity_id, meta_type)
 
         for field, value in e_map.items():
-            if not field in [unit_field, meta_type_field, entity_id_field]:
+            if not field in [unit_field, meta_type_field, entity_id_field, committed_field]:
                 field_parts = field.split(":")
                 field_config = Store._get_field_config(field_parts[0], field_parts[1], field_parts[2])
                 if field_config["valuetype"] == ValueTypes.SET and isinstance(value, list):
                     e.access(Operation.SET, set(value), field_config["_enum"])
                 else:
                     e.access(Operation.SET, value, field_config["_enum"])
+            elif field == committed_field:
+                if Committed[value] == Committed.SAVED:
+                    self.set_committed()
         return e
 
 _entity_map = {}

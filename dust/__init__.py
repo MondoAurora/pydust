@@ -32,6 +32,12 @@ class Operation(Enum):
     CHANGE = 5
     DEL = 6
 
+class Committed(Enum):
+    CREATED = 0
+    UPDATED = 1
+    DELETED = 2
+    SAVED = 3
+
 class MetaProps(Enum):
     @property
     def datatype(self):

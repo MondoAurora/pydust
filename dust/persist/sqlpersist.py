@@ -3,7 +3,7 @@ from jinja2 import Template
 import traceback
 import json
 
-from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps
+from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps, Committed
 from dust.entity import UNIT_ENTITY, EntityTypes, EntityBaseMeta, Store, UnitMeta
 from dust.events import UNIT_EVENTS, EventTypes
 
@@ -34,15 +34,24 @@ def load_all():
     global _sql_persister
     return _sql_persister.load_all()    
 
+def load_units():
+    global _sql_persister
+    return _sql_persister.load_units()    
+
+def load_unit_type(unit_meta_type):
+    global _sql_persister
+    return _sql_persister.load_type(unit_meta_type)    
+
 def persist_entities(entities):
     global _sql_persister
     _sql_persister.persist_entities(entities)    
 
 class SqlField():
-    def __init__(self, field_name, field_type, primary_key=False):
+    def __init__(self, field_name, field_type, primary_key=False, base_field=False):
         self.field_name = field_name
         self.field_type = field_type
         self.primary_key = primary_key
+        self.base_field = base_field
 
 class SqlTable():
     def __init__(self, table_name):
@@ -50,8 +59,8 @@ class SqlTable():
         self.fields = []
         self.primary_keys = []
 
-    def add_field(self, sql_field, sql_type, primary_key=False):
-        field = SqlField(sql_field, sql_type, primary_key)
+    def add_field(self, sql_field, sql_type, primary_key=False, base_field=False):
+        field = SqlField(sql_field, sql_type, primary_key, base_field)
         self.fields.append(field)
         if primary_key:
             self.primary_keys.append(field)
@@ -79,6 +88,9 @@ class SqlPersist():
         pass
 
     def select_template(self, filters):
+        pass
+
+    def update_template(self):
         pass
 
     def convert_value_to_db(self, field, value):
@@ -127,8 +139,22 @@ class SqlPersist():
     def load_all(self):
         entities = []
         for unit_meta in self.__persisted_types:
-            if unit_meta.type_name[0] != "_":
-                entities.extend(self.load_entities(unit_meta, filters=None, conn=None))
+            entities.extend(self.load_type(unit_meta))
+
+        return entities
+
+    def load_units(self):
+        entities = []
+        for unit_meta in EntityTypes:
+            entities.extend(self.load_type(unit_meta))
+
+        return entities
+
+    def load_type(self, unit_meta):
+        entities = []
+
+        if unit_meta.type_name[0] != "_":
+            entities = self.load_entities(unit_meta, filters=None, conn=None)
 
         return entities
 
@@ -169,7 +195,6 @@ class SqlPersist():
                     meta_type_entity = Store.access(Operation.GET, None, row[2])
                     #print("{}:{}:{}".format(unit_entity, row[3], meta_type_entity))
                     entity = Store.access(Operation.GET, None, unit_entity, row[3], meta_type_entity)
-                    entity.set_committed()
 
                     index = 4 # 0 - global_id 1-3: base fields
                     for field in meta_type.fields_enum:
@@ -180,6 +205,7 @@ class SqlPersist():
 
                             index += 1
 
+                    entity.set_committed()
                     entities[row[0]] = entity
             finally:
                 self._close_cursor(c)
@@ -201,6 +227,7 @@ class SqlPersist():
                         for row in rows:
                             if row[0] in global_ids:
                                 entities[row[0]].access(Operation.ADD, self.map_value_from_db(field, row[2]), field)
+                                entities[row[0]].set_committed()
 
                     finally:
                         self._close_cursor(c)
@@ -237,7 +264,7 @@ class SqlPersist():
                     multivalues[multivalue_tablename] = (field.name, self.map_value_to_db(field, entity))
 
             try:
-                return_value = self.__insert_entity_values(insert_sql, values, conn)
+                return_value = self.__update_entity_values(insert_sql, values, conn)
                 if return_value and len(sql_tables) > 1:
                     #print(json.dumps(multivalues, indent=4))
                     for idx, sql_table in enumerate(sql_tables[1:], start=1):
@@ -250,20 +277,51 @@ class SqlPersist():
                                     self.add_execute_param(values, "_global_id", entity.global_id())
                                     self.add_execute_param(values, "_value_cnt", value_cnt)
                                     self.add_execute_param(values, "_"+field_name+"_value", value)
-                                    return_value = self.__insert_entity_values(insert_sql, values, conn)
+                                    return_value = self.__update_entity_values(insert_sql, values, conn)
             finally:
                 if close_connection:
                     self._close_connection(conn)
 
-        return False
+        if return_value:
+            entity.set_committed()
 
-    def __insert_entity_values(self, insert_sql, values, conn):
+        return return_value
+
+    def update_entity(self, entity, conn=None):
+        return_value = False
+
+        close_connection = ( conn is None )
+        if conn is None:
+            conn = self._create_connection()
+        meta_type = entity.get_meta_type_enum()
+        if meta_type in self.__persisted_types:
+            sql_tables = self.__sql_tables(self.__table_name(meta_type), meta_type.fields_enum)
+            try:
+                update_sql = self.__render_tempate(self.update_template, sql_table=sql_tables[0])
+                values = self.create_exectute_params()
+                self.add_execute_param(values, "_global_id", entity.global_id())
+                for field in meta_type.fields_enum:
+                    if not field.valuetype in [ValueTypes.LIST, ValueTypes.SET]:
+                        self.add_execute_param(values, "_"+field.name, self.map_value_to_db(field, entity))
+                return_value = self.__update_entity_values(update_sql, values, conn)
+
+            finally:
+                if close_connection:
+                    self._close_connection(conn)
+
+        if return_value:
+            entity.set_committed()
+
+        return return_value
+
+    def __update_entity_values(self, update_sql, values, conn):
         return_value = False
 
         try:
             c = self._create_cursor(conn)
-            #print("Inserting {} with {}".format(values, insert_sql))
-            c.execute(insert_sql, values)
+            if update_sql.startswith("UPDATE"):
+                print("Updating {} with {}".format(values, update_sql))
+            c.execute(update_sql, values)
 
             return_value = True
         finally:
@@ -276,7 +334,12 @@ class SqlPersist():
         try:
             conn = self._create_connection()
             for e in entities:
-                self.insert_entity(e, conn)
+                if e.committed == Committed.CREATED:
+                    self.insert_entity(e, conn)
+                elif e.committed == Committed.UPDATED:
+                    self.update_entity(e, conn)
+                elif e.committed == Committed.DELETED:
+                    pass
         finally:
             self._close_connection(conn)
 
@@ -294,15 +357,15 @@ class SqlPersist():
         sql_tables = []
         sql_table = SqlTable(table_name)
         sql_tables.append(sql_table)
-        sql_table.add_field("_global_id", self.sql_type(Datatypes.STRING, ValueTypes.SINGLE, primary_key=True), primary_key=True)
+        sql_table.add_field("_global_id", self.sql_type(Datatypes.STRING, ValueTypes.SINGLE, primary_key=True), primary_key=True, base_field=True)
         for base_field in EntityTypes._entity_base.fields_enum:
             if base_field != EntityBaseMeta.committed:
-                sql_table.add_field("_"+base_field.name, self.sql_type(base_field.datatype, base_field.valuetype))
+                sql_table.add_field("_"+base_field.name, self.sql_type(base_field.datatype, base_field.valuetype), base_field=True)
         for field in fields_enum:
             if field.valuetype in [ValueTypes.LIST, ValueTypes.SET]:
                 multivalue_sql_table = SqlTable("{}_{}".format(table_name, field.name))
-                multivalue_sql_table.add_field("_global_id", self.sql_type(Datatypes.STRING, ValueTypes.SINGLE, primary_key=True), primary_key=True)
-                multivalue_sql_table.add_field("_value_cnt", self.sql_type(Datatypes.INT, ValueTypes.SINGLE), primary_key=True)
+                multivalue_sql_table.add_field("_global_id", self.sql_type(Datatypes.STRING, ValueTypes.SINGLE, primary_key=True), primary_key=True, base_field=True)
+                multivalue_sql_table.add_field("_value_cnt", self.sql_type(Datatypes.INT, ValueTypes.SINGLE), primary_key=True, base_field=True)
                 multivalue_sql_table.add_field("_"+field.name+"_value", self.sql_type(field.datatype, ValueTypes.SINGLE))
                 sql_tables.append(multivalue_sql_table)
             else:

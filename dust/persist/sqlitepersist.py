@@ -60,6 +60,16 @@ filter[0] filter[1] ? {% if not loop.last %}AND {% endif %}\
 {% endif %}\
 "
 
+UPDATE_TEMPLATE = "\
+UPDATE {{sql_table.table_name}} SET \
+{% for field in sql_table.fields %}\
+{% if not field.primary_key and not field.base_field %}{{ field.field_name }} = ?{% if not loop.last %},{% endif %}{% endif %} \
+{% endfor %}\
+WHERE \
+{% for field in sql_table.primary_keys %}{{ field.field_name }} = ?{% if not loop.last %},{% endif %}{% endfor %} \
+"
+
+
 DB_FILE = "dust.db"
 
 class SqlitePersist(SqlPersist):
@@ -136,6 +146,9 @@ class SqlitePersist(SqlPersist):
 
     def select_template(self, filters):
         return SELECT_TEMPLATE
+
+    def update_template(self):
+        return UPDATE_TEMPLATE
 
     def convert_value_to_db(self, field, value):
         if field.datatype == Datatypes.BOOL:
