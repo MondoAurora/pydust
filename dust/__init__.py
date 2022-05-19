@@ -31,6 +31,7 @@ class Operation(Enum):
     VISIT = 4
     CHANGE = 5
     DEL = 6
+    WALK = 7
 
 class Committed(Enum):
     CREATED = 0

@@ -285,7 +285,7 @@ class Store():
             last_global_id = last_obj.global_id()
 
         path_length = len(remaining_path)
-        if last_obj and path_length == 0:
+        if last_obj and path_length == 0 and operation == Operation.GET:
             if _messages_create_message:
                 _create_message(MessageType.ENTITY_ACCESS, {"path": last_entity_path, "op": operation}, [last_global_id])
             return last_obj
@@ -341,8 +341,44 @@ class Store():
                         for key, value in last_obj.items():
                             value(key, value)
 
+            elif operation == Operation.WALK:
+                #TODO: Should be able to run with multiple roots
+                stored_entities = set()
+                rv = [last_obj]
+                Store._walk_entities(rv, stored_entities)
+
             return rv
 
+    @staticmethod
+    def _walk_entities(entities, stored_entities):
+        idx = 0
+        while True:
+            if idx >= len(entities):
+                break
+
+            entity = entities[idx]
+            idx += 1
+                
+            meta_type = Store.get_meta_type_enum(entity)
+            field_enums = [EntityTypes._entity_base.fields_enum, meta_type.fields_enum]
+            for field_enum in field_enums:
+                for field in field_enum:
+                    if field.datatype == Datatypes.ENTITY:
+                        if field.valuetype == ValueTypes.SINGLE:
+                            value = entity.access(Operation.GET, None, field)
+                            if isinstance(value, Entity) and not value.global_id() in stored_entities:
+                                entities.append(value)
+                                stored_entities.add(value.global_id())
+                        elif field.valuetype in [ValueTypes.LIST, ValueTypes.SET]:
+                            values = entity.access(Operation.GET, None, field)
+                            if values:
+                                for value in values:
+                                    if value and not value in stored_entities:
+                                        list_entity = Store.access(Operation.GET, None, value)
+                                        if list_entity is None:
+                                            print(entity.global_id() + " - " + value)
+                                        entities.append(list_entity)
+                                        stored_entities.add(list_entity.global_id())
 
     @staticmethod
     def _access_data_create_container(obj, field, key):
@@ -525,9 +561,16 @@ class Store():
         template = separator.join(["{}" for i in range(len(fields))])
         for field in fields:
             if isinstance(entity, Entity):
-                values.append(entity.access(Operation.GET, None, field))
+                if isinstance(field, Enum):
+                    values.append(entity.access(Operation.GET, None, field))
+                elif isinstance(field, tuple):
+                    values.append(entity.access(Operation.GET, None, *field))
             elif isinstance(entity, dict):
-                values.append(entity.get(Store.get_global_fieldname(field)))
+                if isinstance(field, Enum):
+                    values.append(entity.get(Store.get_global_fieldname(field)))
+                elif isinstance(field, tuple):
+                    for field_element in field:
+                        values.append(entity.get(Store.get_global_fieldname(field_element)))
 
         return template.format(*values)
 
