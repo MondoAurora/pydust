@@ -3,6 +3,7 @@ import os
 import yaml
 import traceback
 import inspect
+import deepdiff
 from enum import Enum
 from collections import namedtuple
 from datetime import datetime
@@ -51,6 +52,42 @@ def get_unit_deps_tuple(module_name, unit_name, meta_type_enums):
     meta_type_enums_attr = getattr(module, meta_type_enums)
     dep_func = getattr(module, "get_unit_dependencies", None)
     return (unit_name_attr, meta_type_enums_attr, dep_func)
+
+def compare_entity_to_json_simple(meta_type_enum, entity, json_entity, json_entity_map, compare_sub_entity_fields, log_prefix=""):
+    changed = {}
+
+    for field in meta_type_enum.fields_enum:
+        if field.valuetype == ValueTypes.SINGLE:
+            if field.datatype == Datatypes.ENTITY:
+                if compare_sub_entity_fields and field in compare_sub_entity_fields:
+                    orig_value = entity.access(Operation.GET, None, field)
+                    #print(field.name+"-"+str(orig_value)+"-"+str(_entity_map[entity.global_id()][0]))
+                    new_value = None
+                    new_entity_global_id = json_entity.get(Store.get_global_fieldname(field))
+                    if new_entity_global_id:
+                        new_value = json_entity_map[new_entity_global_id]
+                        #print(str(new_value))
+                    if orig_value is None and not new_value is None or not orig_value is None and new_value is None:
+                        changed[log_prefix+field.name] = {"orig_value": orig_value, "new_value": new_value}
+                    elif not orig_value is None and not new_value is None:
+                        changed.update(compare_entity_to_json_simple(compare_sub_entity_fields[field], orig_value, new_value, json_entity_map, None, log_prefix="{}#".format(field.name)))
+            else:
+                if ( json_entity is None and not entity is None ) or \
+                     json_entity and entity.access(Operation.GET, None, field) != json_entity.get(Store.get_global_fieldname(field)):
+                    changed[log_prefix+field.name] = {"orig_value": entity.access(Operation.GET, None, field), "new_value": json_entity.get(Store.get_global_fieldname(field))}
+
+        elif field.valuetype == ValueTypes.SET or field.valuetype == ValueTypes.LIST or field.valuetype == ValueTypes.MAP:
+            if field.datatype != Datatypes.ENTITY:
+                iter1 = entity.access(Operation.GET, None, field)
+                iter2 = json_entity.get(Store.get_global_fieldname(field))
+                if field.valuetype == field.valuetype == ValueTypes.SET and iter2:
+                    iter2 = set(iter2)
+
+                dd = deepdiff.DeepDiff(iter1, iter2, ignore_order=True)
+                if dd:
+                    changed[log_prefix+field.name] = {"orig_value": entity.access(Operation.GET, None, field), "new_value": json_entity.get(Store.get_global_fieldname(field))}
+
+    return changed
 
 class Store():
     @staticmethod
@@ -556,7 +593,7 @@ class Store():
             return Entity._ref(unit, entity[entity_id_field], meta_type)
 
     @staticmethod
-    def concat_field_values(entity, fields, separator="#"):
+    def concat_field_values(entity, fields, separator="#", ext_store=None):
         values = []
         template = separator.join(["{}" for i in range(len(fields))])
         for field in fields:
@@ -569,8 +606,15 @@ class Store():
                 if isinstance(field, Enum):
                     values.append(entity.get(Store.get_global_fieldname(field)))
                 elif isinstance(field, tuple):
+                    # Only works if except last field all are Entities
+                    e = entity
+                    v = None
                     for field_element in field:
-                        values.append(entity.get(Store.get_global_fieldname(field_element)))
+                        if e and field_element.datatype == Datatypes.ENTITY:
+                            e = ext_store.get(e.get(Store.get_global_fieldname(field_element)))
+                        else:
+                            v = e.get(Store.get_global_fieldname(field_element))
+                    values.append(v)
 
         return template.format(*values)
 
@@ -647,7 +691,7 @@ class Entity():
         entity_map[self.global_id()][0][committed_field] = self.committed.name
 
     @staticmethod
-    def from_json(e_map, force_new_id=False):
+    def from_json(e_map, force_new_id=False, force_entity_id=None):
         entity_map = globals()["_entity_map"]
         enum_map = globals()["_enum_map"]
 
@@ -655,16 +699,21 @@ class Entity():
 
         unit_parts = e_map[unit_field].split(":")
 
-        if force_new_id:
-            entity_id = None
-        else:
-            entity_id = int(e_map[entity_id_field])
-
         unit = Store.access(Operation.GET, None, UNIT_ENTITY, int(unit_parts[1]), EntityTypes.unit)
         unit_name = unit.access(Operation.GET, None, UnitMeta.name)
         meta_type = enum_map[e_map[meta_type_field]]
 
-        e = Store.access(Operation.GET, None, unit_name, entity_id, meta_type)
+        e = None
+        if not force_entity_id is None:
+            e = Store.access(Operation.GET, None, force_entity_id)
+
+        if e is None:
+            if force_new_id:
+                entity_id = None
+            else:
+                entity_id = int(e_map[entity_id_field])
+
+            e = Store.access(Operation.GET, None, unit_name, entity_id, meta_type)
 
         for field, value in e_map.items():
             if not field in [unit_field, meta_type_field, entity_id_field, committed_field]:

@@ -93,6 +93,9 @@ class SqlPersist():
     def update_template(self):
         pass
 
+    def delete_template(self):
+        pass
+
     def convert_value_to_db(self, field, value):
         pass
 
@@ -265,25 +268,39 @@ class SqlPersist():
 
             try:
                 return_value = self.__update_entity_values(insert_sql, values, conn)
-                if return_value and len(sql_tables) > 1:
-                    #print(json.dumps(multivalues, indent=4))
-                    for idx, sql_table in enumerate(sql_tables[1:], start=1):
-                        if return_value:
-                            field_name, multivalues_array = multivalues[sql_table.table_name]
-                            if multivalues_array:
-                                insert_sql = self.__render_tempate(self.insert_into_table_template, sql_table=sql_table)
-                                for value_cnt, value in enumerate(multivalues_array):
-                                    values = self.create_exectute_params()
-                                    self.add_execute_param(values, "_global_id", entity.global_id())
-                                    self.add_execute_param(values, "_value_cnt", value_cnt)
-                                    self.add_execute_param(values, "_"+field_name+"_value", value)
-                                    return_value = self.__update_entity_values(insert_sql, values, conn)
+                if return_value:
+                    return_value = self.__update_entity_multivalues(entity, sql_tables, multivalues, conn, need_delete=False)
             finally:
                 if close_connection:
                     self._close_connection(conn)
 
         if return_value:
             entity.set_committed()
+
+        return return_value
+
+    def __update_entity_multivalues(self, entity, sql_tables, multivalues, conn, need_delete=False):
+        return_value = True
+
+        if len(sql_tables) > 1:
+            for idx, sql_table in enumerate(sql_tables[1:], start=1):
+                if return_value:
+                    if need_delete:
+                        delete_sql = self.__render_tempate(self.delete_template, sql_table=sql_table)
+                        delete_values = self.create_exectute_params()
+                        self.add_execute_param(delete_values, "_global_id", entity.global_id())
+                        return_value = self.__update_entity_values(delete_sql, delete_values, conn)
+
+                    if return_value:
+                        field_name, multivalues_array = multivalues[sql_table.table_name]
+                        if multivalues_array:
+                            insert_sql = self.__render_tempate(self.insert_into_table_template, sql_table=sql_table)
+                            for value_cnt, value in enumerate(multivalues_array):
+                                values = self.create_exectute_params()
+                                self.add_execute_param(values, "_global_id", entity.global_id())
+                                self.add_execute_param(values, "_value_cnt", value_cnt)
+                                self.add_execute_param(values, "_"+field_name+"_value", value)
+                                return_value = self.__update_entity_values(insert_sql, values, conn)
 
         return return_value
 
@@ -300,10 +317,19 @@ class SqlPersist():
                 update_sql = self.__render_tempate(self.update_template, sql_table=sql_tables[0])
                 values = self.create_exectute_params()
                 self.add_execute_param(values, "_global_id", entity.global_id())
+
+                multivalues = {}
+
                 for field in meta_type.fields_enum:
                     if not field.valuetype in [ValueTypes.LIST, ValueTypes.SET]:
                         self.add_execute_param(values, "_"+field.name, self.map_value_to_db(field, entity))
+                    else:
+                        multivalue_tablename = "{}_{}".format(sql_tables[0].table_name, field.name)
+                        multivalues[multivalue_tablename] = (field.name, self.map_value_to_db(field, entity))
+
                 return_value = self.__update_entity_values(update_sql, values, conn)
+                if return_value:
+                    return_value = self.__update_entity_multivalues(entity, sql_tables, multivalues, conn, need_delete=True)
 
             finally:
                 if close_connection:
@@ -319,8 +345,8 @@ class SqlPersist():
 
         try:
             c = self._create_cursor(conn)
-            if update_sql.startswith("UPDATE"):
-                print("Updating {} with {}".format(values, update_sql))
+            #if update_sql.startswith("UPDATE"):
+            #    print("Updating {} with {}".format(values, update_sql))
             c.execute(update_sql, values)
 
             return_value = True
