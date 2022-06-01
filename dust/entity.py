@@ -72,7 +72,7 @@ def compare_entity_to_json_simple(meta_type_enum, entity, json_entity, json_enti
                     elif not orig_value is None and not new_value is None:
                         changed.update(compare_entity_to_json_simple(compare_sub_entity_fields[field], orig_value, new_value, json_entity_map, None, log_prefix="{}#".format(field.name)))
             else:
-                if ( json_entity is None and not entity is None ) or \
+                if ( json_entity is None and not entity is None ) or ( not json_entity is None and entity is None ) or \
                      json_entity and entity.access(Operation.GET, None, field) != json_entity.get(Store.get_global_fieldname(field)):
                     changed[log_prefix+field.name] = {"orig_value": entity.access(Operation.GET, None, field), "new_value": json_entity.get(Store.get_global_fieldname(field))}
 
@@ -86,6 +86,36 @@ def compare_entity_to_json_simple(meta_type_enum, entity, json_entity, json_enti
                 dd = deepdiff.DeepDiff(iter1, iter2, ignore_order=True)
                 if dd:
                     changed[log_prefix+field.name] = {"orig_value": entity.access(Operation.GET, None, field), "new_value": json_entity.get(Store.get_global_fieldname(field))}
+            elif field.valuetype == ValueTypes.SET or field.valuetype == ValueTypes.LIST:
+                if compare_sub_entity_fields and field in compare_sub_entity_fields:
+                    orig_value_global_ids = entity.access(Operation.GET, None, field)
+                    new_entity_global_ids = json_entity.get(Store.get_global_fieldname(field))
+                    # at this point we only have unordered ids, so we have to compare everything to everything and fail as early as possible
+                    if not orig_value_global_ids and new_entity_global_ids or not new_entity_global_ids and orig_value_global_ids or len(orig_value_global_ids) != len(new_entity_global_ids):
+                        changed[log_prefix+field.name] = {"orig_list_value": list(orig_value_global_ids), "new_list_value": list(new_entity_global_ids)}
+                    else:
+                        # Same number of entries
+                        no_match_found = False
+                        match_to = list(new_entity_global_ids)
+                        for orig_value_global_id in orig_value_global_ids:
+                            orig_value = Store.access(Operation.GET, None, orig_value_global_id)
+                            if orig_value is None:
+                                no_match_found = True
+                                break
+                            else:
+                                match_found = False
+                                for new_entity_global_id in match_to:
+                                    new_value = json_entity_map[new_entity_global_id]
+                                    if not new_value is None:
+                                        sub_changed = compare_entity_to_json_simple(compare_sub_entity_fields[field], orig_value, new_value, json_entity_map, None, log_prefix="{}#".format(field.name))
+                                        if len(sub_changed) == 0:
+                                            match_found = True
+                                            break
+                                if not match_found:
+                                    no_match_found = True
+                                    break
+                        if no_match_found:
+                            changed[log_prefix+field.name] = {"orig_list_value": list(orig_value_global_ids), "new_list_value": list(new_entity_global_ids)}
 
     return changed
 
@@ -714,6 +744,15 @@ class Entity():
                 entity_id = int(e_map[entity_id_field])
 
             e = Store.access(Operation.GET, None, unit_name, entity_id, meta_type)
+
+        # Wipe none base fields
+        orig_map = entity_map[e.global_id()][0]
+        del_fields = []
+        for field in orig_map.keys():
+            if not field in [unit_field, meta_type_field, entity_id_field, committed_field]:
+                del_fields.append(field)
+        for field in del_fields:
+            del orig_map[field]
 
         for field, value in e_map.items():
             if not field in [unit_field, meta_type_field, entity_id_field, committed_field]:
