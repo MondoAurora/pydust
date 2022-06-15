@@ -22,6 +22,7 @@ FORMAT_DATETIME_SHORT_EU = "%d.%m.%y %H:%M"
 FORMAT_DATETIME_EU_TZ = "%d.%m.%Y %H:%M:%S %Z"
 
 FORMAT_DATE_EU = "%d.%m.%Y"
+FORMAT_DB_DATE = "%Y-%m-%d"
 
 class RepeatTypes(Enum):
     NO_REPEAT = 0

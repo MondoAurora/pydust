@@ -325,18 +325,22 @@ class Store():
         last_entity_path = []
 
         if len(path) > 0:
-            unit, entity_id, meta_type = Entity._resolve_global_id(path[0])
-            if entity_id is None:
-                # path is done with 3 parts
-                if len(path) > 2 and ( path[1] is None or isinstance(path[1], int) ) and \
-                    ( isinstance( path[2], FieldProps ) or isinstance( path[2], Entity ) ):
-                    entity_id = Store.increment_unit_counter(path[0], path[1])
-                    local_ref = Entity._ref(path[0], entity_id, path[2])
-                    idx = 3
-            else:
-                # found entity id on path[0]
-                local_ref = path[0]
+            if operation == Operation.WALK and isinstance(path[0], list):
+                last_obj = path[0]
                 idx = 1
+            else:
+                unit, entity_id, meta_type = Entity._resolve_global_id(path[0])
+                if entity_id is None:
+                    # path is done with 3 parts
+                    if len(path) > 2 and ( path[1] is None or isinstance(path[1], int) ) and \
+                        ( isinstance( path[2], FieldProps ) or isinstance( path[2], Entity ) ):
+                        entity_id = Store.increment_unit_counter(path[0], path[1])
+                        local_ref = Entity._ref(path[0], entity_id, path[2])
+                        idx = 3
+                else:
+                    # found entity id on path[0]
+                    local_ref = path[0]
+                    idx = 1
 
         if idx < len(path):
             remaining_path = path[idx:]
@@ -409,9 +413,11 @@ class Store():
                             value(key, value)
 
             elif operation == Operation.WALK:
-                #TODO: Should be able to run with multiple roots
                 stored_entities = set()
-                rv = [last_obj]
+                if isinstance(last_obj, list):
+                    rv = last_obj
+                else:
+                    rv = [last_obj]
                 Store._walk_entities(rv, stored_entities)
 
             return rv

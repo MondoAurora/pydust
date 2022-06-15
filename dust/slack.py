@@ -89,8 +89,13 @@ def _notify_slack(message_type, message_params, entities):
                 webhook_url = entity.access(Operation.GET, None, SlackNotificationMeta.channel, SlackChannelMeta.webhook_url)
 
             print("Sending to slack")
+            try:
+                data = json.dumps(json.loads(notification))
+            except:
+                traceback.print_exc()
+                data = json.dumps({'text': notification})
             response = requests.post(
-                webhook_url, data = json.dumps({'text': notification}),
+                webhook_url, data = data,
                 headers={'Content-Type': 'application/json'}
                 )
             if response.status_code != 200:
