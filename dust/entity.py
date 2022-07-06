@@ -85,7 +85,15 @@ def compare_entity_to_json_simple(meta_type_enum, entity, json_entity, json_enti
 
                 dd = deepdiff.DeepDiff(iter1, iter2, ignore_order=True)
                 if dd:
-                    changed[log_prefix+field.name] = {"orig_value": entity.access(Operation.GET, None, field), "new_value": json_entity.get(Store.get_global_fieldname(field))}
+                    orig_value = entity.access(Operation.GET, None, field)
+                    new_value = json_entity.get(Store.get_global_fieldname(field))
+
+                    if field.valuetype == ValueTypes.SET:
+                        if orig_value:
+                            orig_value = list(orig_value)
+                        if new_value:
+                            new_value = list(new_value)
+                    changed[log_prefix+field.name] = {"orig_value": orig_value, "new_value": new_value}
             elif field.valuetype == ValueTypes.SET or field.valuetype == ValueTypes.LIST:
                 if compare_sub_entity_fields and field in compare_sub_entity_fields:
                     orig_value_global_ids = entity.access(Operation.GET, None, field)
