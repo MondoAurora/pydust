@@ -33,6 +33,8 @@ class MetaField(MetaProps):
     name = (Datatypes.STRING, ValueTypes.SINGLE, 1, 300)
     global_name = (Datatypes.STRING, ValueTypes.SINGLE, 2, 301)
     field_order = (Datatypes.INT, ValueTypes.SINGLE, 3, 302)
+    data_type = (Datatypes.STRING, ValueTypes.SINGLE, 4, 303)
+    value_type = (Datatypes.STRING, ValueTypes.SINGLE, 5, 304)
 
 class EntityBaseMeta(MetaProps):
     unit = (Datatypes.ENTITY, ValueTypes.SINGLE, 1, 400)
@@ -295,6 +297,8 @@ class Store():
                 field_entity.access(Operation.SET, field.name, MetaField.name)
                 field_entity.access(Operation.SET, field.order_value, MetaField.field_order)
                 field_entity.access(Operation.SET, global_name, MetaField.global_name)
+                field_entity.access(Operation.SET, field.datatype.name, MetaField.data_type)
+                field_entity.access(Operation.SET, field.valuetype.name, MetaField.value_type)
                 field_entities.append(field_entity)
 
                 if field.id_value > max_id_value:
