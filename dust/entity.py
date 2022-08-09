@@ -264,7 +264,7 @@ class Store():
 
         for base_field in EntityBaseMeta:
             global_name = Store._global_field_name(UNIT_ENTITY_META, EntityTypes._entity_base.name, base_field.name)
-            enum_map[global_name] = {"datatype": base_field.value[0], "valuetype": base_field.value[1], "id": field.id_value, "field_order": base_field.order_value, "_enum": base_field}
+            enum_map[global_name] = {"datatype": base_field.value[0], "valuetype": base_field.value[1], "id": base_field.id_value, "field_order": base_field.order_value, "_enum": base_field}
             enum_map[base_field] = global_name
 
         for meta_type in e:
@@ -479,7 +479,8 @@ class Store():
                 e_map[global_field_name] = set()
             elif field_config["valuetype"] == ValueTypes.LIST:
                 e_map[global_field_name] = []
-                return e_map[global_name]
+            
+            return e_map[global_field_name]
 
     @staticmethod
     def _set_uncommitted(e, e_map):
@@ -513,7 +514,7 @@ class Store():
                         e_map.setdefault(global_field_name, set()).add(value.global_id())
                         changed = Store._set_uncommitted(entity, e_map)
                 else:
-                    if e_map.get(global_field_name, None) != value:
+                    if e_map.get(global_field_name, None) != value: # TODO: change if it shoudl be value.global_id()
                         e_map[global_field_name] = value.global_id()
                         changed = Store._set_uncommitted(entity, e_map)
             else:
@@ -566,8 +567,6 @@ class Store():
                     return entities[e_map[global_name]][1]
                 else:
                     return e_map[global_name]
-
-
         elif isinstance(obj, list):
             if isinstance(key, int) and key < len(obj):
                 return obj[key]

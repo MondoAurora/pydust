@@ -26,7 +26,7 @@ README = (HERE / "README.md").read_text()
 # This call to setup() does all the work
 setup(
     name="PyDust",
-    version="0.0.16",
+    version="0.0.17",
     description="PyDust",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -41,5 +41,5 @@ setup(
     ],
     packages=["dust","dust.persist"],
     include_package_data=True,
-    install_requires=["pytz", "python-dateutil", "pyyaml", "jinja2", "requests", "mysql-connector-python"]
+    install_requires=["pytz", "python-dateutil", "pyyaml", "jinja2", "requests", "mysql-connector-python", "deepdiff"]
 )
