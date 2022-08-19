@@ -2,6 +2,16 @@ from enum import Enum
 
 __all__ = ["entity","events","messages","templates"]
 
+_dust_logger = None
+
+def set_logger(logger):
+    global _dust_logger
+    _dust_logger = logger
+
+def logger():
+    global _dust_logger
+    return _dust_logger
+
 class Datatypes(Enum):
     INT = 0
     NUMERIC = 2
