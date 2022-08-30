@@ -336,6 +336,9 @@ class Store():
         last_global_id = None
         last_entity_path = []
 
+        unit = None
+        meta_type = None
+
         if len(path) > 0:
             if operation == Operation.WALK and isinstance(path[0], list):
                 last_obj = path[0]
@@ -347,7 +350,9 @@ class Store():
                     if len(path) > 2 and ( path[1] is None or isinstance(path[1], int) ) and \
                         ( isinstance( path[2], FieldProps ) or isinstance( path[2], Entity ) ):
                         entity_id = Store.increment_unit_counter(path[0], path[1])
-                        local_ref = Entity._ref(path[0], entity_id, path[2])
+                        unit = path[0]
+                        meta_type = path[2]
+                        local_ref = Entity._ref(unit, entity_id, meta_type)
                         idx = 3
                 else:
                     # found entity id on path[0]
@@ -362,7 +367,7 @@ class Store():
         #print("Access 1: local_ref={}, path={}".format(local_ref, path))
         if local_ref:
             if not local_ref in entities:
-                last_obj = Store._create_entity(path[0], entity_id, path[2])
+                last_obj = Store._create_entity(unit, entity_id, meta_type)
             else:
                 last_obj = entities[local_ref][1]
             last_global_id = last_obj.global_id()
@@ -557,13 +562,15 @@ class Store():
         entities = globals()["_entity_map"]
         enum_map = globals()["_enum_map"]
 
-
         if isinstance(obj, Entity):
             global_name = enum_map[key]
             e_map = entities[obj.global_id()][0]
             if global_name in e_map:
                 unit, entity_id, meta_type = Entity._resolve_global_id(e_map[global_name])
                 if entity_id:
+                    if not e_map[global_name] in entities:
+                        e = Store.access(Operation.GET, None, e_map[global_name])
+                        #print(str(e.global_id()))
                     return entities[e_map[global_name]][1]
                 else:
                     return e_map[global_name]
@@ -702,6 +709,14 @@ class Entity():
                 if unit and isinstance(unit, Entity) and enum_map[unit.meta_type] == EntityTypes.unit:
                     if entity and entity.meta_type and isinstance(entity.meta_type, Entity) and entity.meta_type in enum_map:
                         return (unit, entity_id, entity.meta_type)
+                    elif entity is None:
+                        unit_meta = enum_map[unit.access(Operation.GET, None, UnitMeta.name)+"_meta"]
+                        for meta_type_global_id in unit_meta.access(Operation.GET, None, UnitMeta.meta_types):
+                            meta_type_entity = Store.access(Operation.GET, None, meta_type_global_id)
+                            if meta_type_entity.access(Operation.GET, None, TypeMeta.name) == parts[2]:
+                                #print("None existant entity, but create it for {}. Type: {}".format(value, meta_type_entity.access(Operation.GET, None, TypeMeta.name)))
+                                return (unit, entity_id, meta_type_entity)
+
 
         return (None, None, None)
 

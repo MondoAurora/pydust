@@ -4,7 +4,7 @@ import traceback
 import json
 
 from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps, Committed
-from dust.entity import UNIT_ENTITY, EntityTypes, EntityBaseMeta, Store, UnitMeta
+from dust.entity import UNIT_ENTITY, EntityTypes, EntityBaseMeta, Store, UnitMeta, TypeMeta
 from dust.events import UNIT_EVENTS, EventTypes
 
 _sql_persister = None
@@ -38,9 +38,13 @@ def load_units():
     global _sql_persister
     return _sql_persister.load_units()    
 
-def load_unit_type(unit_meta_type):
+def load_unit_type(unit_meta_type, filters=None, load_referenced=False):
     global _sql_persister
-    return _sql_persister.load_type(unit_meta_type)    
+    return _sql_persister.load_type(unit_meta_type, filters=filters, load_referenced=load_referenced)    
+
+def load_entity_ids_for_type(unit_meta_type):
+    global _sql_persister
+    return _sql_persister.load_entity_ids_for_type(unit_meta_type)    
 
 def persist_entities(entities):
     global _sql_persister
@@ -153,16 +157,38 @@ class SqlPersist():
 
         return entities
 
-    def load_type(self, unit_meta):
+    def load_type(self, unit_meta, filters=None, load_referenced=False):
         entities = []
 
         if unit_meta.type_name[0] != "_":
-            entities = self.load_entities(unit_meta, filters=None, conn=None)
+            entities = self.load_entities(unit_meta, filters=filters, conn=None)
+
+        if load_referenced:
+            loaded_global_ids = set()
+            requested_global_ids = set()
+            loaded_global_ids.update([e.global_id() for e in entities])
+
+            while True:
+                walked_entities = Store.access(Operation.WALK, None, list(entities))
+                load_map = {}
+
+                for entity in walked_entities:
+                    if entity.get_meta_type_enum() in self.__persisted_types and entity.committed == Committed.CREATED:
+                        if not entity.global_id() in loaded_global_ids and not entity.global_id() in requested_global_ids:
+                            load_map.setdefault(entity.get_meta_type_enum(), []).append(entity.entity_id)
+                            requested_global_ids.add(entity.global_id())
+
+                if not load_map:
+                    break
+
+                for meta_type, global_ids in load_map.items():
+                    loaded = self.load_entities(meta_type, filters=[("_entity_id", "in", global_ids)])
+                    loaded_global_ids.update([e.global_id() for e in loaded])
 
         return entities
 
-    def load_entities(self, meta_type, filters=None, conn=None):
-        entities = {}
+    def load_entity_ids_for_type(self, meta_type, filters=None, conn=None):
+        entity_ids = []
 
         close_connection = ( conn is None )
         if conn is None:
@@ -180,7 +206,43 @@ class SqlPersist():
                 if filters:
                     values = self.create_exectute_params()
                     for f in filters:
-                        self.add_execute_param(values, f[0], f[2])
+                        self.add_execute_param(values, f[0], f[2], f[1])
+                    c.execute(select_sql, values)
+                else:
+                    c.execute(select_sql)
+
+                rows = c.fetchall()
+                for row in rows:
+                    entity_ids.append(row[3])
+            finally:
+                self._close_cursor(c)
+
+        finally:
+            if close_connection:
+                self._close_connection(conn)
+
+        return entity_ids
+
+    def load_entities(self, meta_type, filters=None, conn=None):
+        entities = {}
+
+        close_connection = ( conn is None )
+        if conn is None:
+            conn = self._create_connection()
+
+        try:
+            sql_tables = self.__sql_tables(self.__table_name(meta_type), meta_type.fields_enum)
+
+            try:
+                select_sql = self.__render_tempate(self.select_template, filters, sql_table=sql_tables[0], filters=filters)
+
+                c = self._create_cursor(conn)
+
+                #print("{} with {}".format(select_sql, filters))
+                if filters:
+                    values = self.create_exectute_params()
+                    for f in filters:
+                        self.add_execute_param(values, f[0], f[2], f[1])
                     c.execute(select_sql, values)
                 else:
                     c.execute(select_sql)
@@ -447,7 +509,7 @@ class SqlPersist():
             if close_connection:
                 self._close_connection(conn)
 
-        for sch in schema:
-            print(sch)
+        #for sch in schema:
+        #    print(sch)
 
         return schema

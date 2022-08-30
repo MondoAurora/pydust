@@ -57,7 +57,11 @@ FROM {{sql_table.table_name}} \
 {% if filters %}\
 WHERE \
 {% for filter in filters %}\
+{% if filter[1]|lower == 'in' %}\
+{{ filter[0] }} {{ filter[1] }} ({% for v in filter[2] %}%({{ filter[0] }}{{loop.index}})s{% if not loop.last %},{% endif %}{% endfor %}) {% if not loop.last %}AND {% endif %}\
+{% else %}\
 {{ filter[0] }} {{ filter[1] }} %({{ filter[0] }})s {% if not loop.last %}AND {% endif %}\
+{% endif %}\
 {% endfor %}\
 {% endif %}\
 "
@@ -123,8 +127,14 @@ class MySQLPersist(SqlPersist):
     def create_exectute_params(self):
         return {}
 
-    def add_execute_param(self, values, name, value):
-        values[name] = value
+    def add_execute_param(self, values, name, value, operator="="):
+        if operator and operator.lower() == "in":
+            cnt = 1
+            for v in value:
+                values[name+str(cnt)] = v
+                cnt += 1
+        else:
+            values[name] = value
 
     def table_exits(self, table_name, conn):
         try:
