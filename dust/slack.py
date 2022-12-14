@@ -1,6 +1,7 @@
 import traceback
 import requests
 import json
+import os
 
 from datetime import datetime
 from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps
@@ -12,6 +13,8 @@ UNIT_SLACK = "slack"
 UNIT_SLACK_META = "slack_meta"
 UNIT_ID = 7
 UNIT_META_ID = 8
+
+TEST_SLACK = True
 
 def get_unit_dependencies():
     return [
@@ -34,8 +37,22 @@ class SlackTypes(FieldProps):
     channel = (UNIT_SLACK_META, SlackChannelMeta, 1)
     notification = (UNIT_SLACK_META, SlackNotificationMeta, 2)
 
+def set_slack_test():
+    global TEST_SLACK
+    try:
+        default_branch = os.environ.get('CI_DEFAULT_BRANCH')
+        commit_ref_name = os.environ.get('CI_COMMIT_REF_NAME')
+        pipeline_src = os.environ.get("CI_PIPELINE_SOURCE")
+        if pipeline_src == "schedule" and commit_ref_name == default_branch and os.environ.get('slack_test_channel') != 'True':
+            TEST_SLACK = False
+        else:
+            TEST_SLACK = True
+    except:
+        TEST_SLACK = True
+
 Store.create_unit(UNIT_SLACK, UNIT_ID)
 Store.load_types_from_enum(SlackTypes, UNIT_META_ID)
+set_slack_test()
 
 _channels = {}
 
@@ -116,3 +133,4 @@ def create_slack_notification(channel_name, notification, test=True):
         return notif_entity
 
     return None
+

@@ -126,10 +126,10 @@ class SqlPersist():
             elif field.valuetype == ValueTypes.SET:
                 return [self.convert_value_to_db(field, v) for v in value]
 
-            elif field.valuetype == ValueTypes.LIST:
+            elif field.valuetype == ValueTypes.LIST and field.datatype != Datatypes.JSON:
                 return [self.convert_value_to_db(field, v) for v in value]
 
-            elif field.valuetype == ValueTypes.MAP:
+            elif field.valuetype == ValueTypes.MAP or field.valuetype == ValueTypes.LIST:
                 return json.dumps(value)
 
     def map_value_from_db(self, field, value):
@@ -137,10 +137,10 @@ class SqlPersist():
             return None
 
         else:
-            if field.valuetype in [ValueTypes.SINGLE, ValueTypes.SET, ValueTypes.LIST]:
+            if field.valuetype in [ValueTypes.SINGLE, ValueTypes.SET, ValueTypes.LIST] and field.datatype != Datatypes.JSON:
                 return self.convert_value_from_db(field, value)
 
-            elif field.valuetype == ValueTypes.MAP:
+            elif field.valuetype == ValueTypes.MAP or field.valuetype == ValueTypes.LIST:
                 return json.loads(value)
 
     def load_all(self):
@@ -263,7 +263,7 @@ class SqlPersist():
 
                     index = 4 # 0 - global_id 1-3: base fields
                     for field in meta_type.fields_enum:
-                        if not field.valuetype in [ValueTypes.LIST, ValueTypes.SET]:
+                        if not field.valuetype in [ValueTypes.LIST, ValueTypes.SET] or field.valuetype == ValueTypes.LIST and field.datatype == Datatypes.JSON:
                             value = self.map_value_from_db(field, row[index])
                             if not value is None:
                                 entity.access(Operation.SET, value, field)
@@ -277,7 +277,7 @@ class SqlPersist():
 
             # Do multivalue fields
             for field in meta_type.fields_enum:
-                if field.valuetype in [ValueTypes.LIST, ValueTypes.SET]:
+                if field.valuetype in [ValueTypes.LIST, ValueTypes.SET] and field.datatype != Datatypes.JSON:
                     multivalue_sql_table = None
                     for stbl in sql_tables:
                         if stbl.table_name == "{}_{}".format(sql_tables[0].table_name, field.name):
@@ -322,7 +322,7 @@ class SqlPersist():
             self.add_execute_param(values, "_meta_type", entity.meta_type.global_id())
             self.add_execute_param(values, "_entity_id", entity.entity_id)
             for field in meta_type.fields_enum:
-                if not field.valuetype in [ValueTypes.LIST, ValueTypes.SET]:
+                if not field.valuetype in [ValueTypes.LIST, ValueTypes.SET] or field.datatype == Datatypes.JSON and field.valuetype == ValueTypes.LIST:
                     self.add_execute_param(values, "_"+field.name, self.map_value_to_db(field, entity))
                 else:
                     multivalue_tablename = "{}_{}".format(sql_tables[0].table_name, field.name)
@@ -383,7 +383,7 @@ class SqlPersist():
                 multivalues = {}
 
                 for field in meta_type.fields_enum:
-                    if not field.valuetype in [ValueTypes.LIST, ValueTypes.SET]:
+                    if not field.valuetype in [ValueTypes.LIST, ValueTypes.SET] or field.datatype == Datatypes.JSON and field.valuetype == ValueTypes.LIST:
                         self.add_execute_param(values, "_"+field.name, self.map_value_to_db(field, entity))
                     else:
                         multivalue_tablename = "{}_{}".format(sql_tables[0].table_name, field.name)
@@ -408,7 +408,7 @@ class SqlPersist():
         try:
             c = self._create_cursor(conn)
             #if update_sql.startswith("UPDATE"):
-            #    print("Updating {} with {}".format(values, update_sql))
+            #   print("Updating {} with {}".format(values, update_sql))
             c.execute(update_sql, values)
 
             return_value = True
@@ -450,7 +450,7 @@ class SqlPersist():
             if base_field != EntityBaseMeta.committed:
                 sql_table.add_field("_"+base_field.name, self.sql_type(base_field.datatype, base_field.valuetype), base_field=True)
         for field in fields_enum:
-            if field.valuetype in [ValueTypes.LIST, ValueTypes.SET]:
+            if field.valuetype in [ValueTypes.LIST, ValueTypes.SET] and field.datatype != Datatypes.JSON:
                 multivalue_sql_table = SqlTable("{}_{}".format(table_name, field.name))
                 multivalue_sql_table.add_field("_global_id", self.sql_type(Datatypes.STRING, ValueTypes.SINGLE, primary_key=True), primary_key=True, base_field=True)
                 multivalue_sql_table.add_field("_value_cnt", self.sql_type(Datatypes.INT, ValueTypes.SINGLE), primary_key=True, base_field=True)
