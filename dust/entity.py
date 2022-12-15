@@ -55,8 +55,12 @@ def get_unit_deps_tuple(module_name, unit_name, meta_type_enums):
     dep_func = getattr(module, "get_unit_dependencies", None)
     return (unit_name_attr, meta_type_enums_attr, dep_func)
 
-def compare_entity_to_json_simple(meta_type_enum, entity, json_entity, json_entity_map, compare_sub_entity_fields, log_prefix=""):
+def compare_entity_to_json_simple(meta_type_enum, entity, json_entity, json_entity_map, compare_sub_entity_fields_map=None, log_prefix=""):
     changed = {}
+
+    compare_sub_entity_fields = {}
+    if compare_sub_entity_fields_map:
+        compare_sub_entity_fields = compare_sub_entity_fields_map.get(meta_type_enum, {})
 
     for field in meta_type_enum.fields_enum:
         if field.valuetype == ValueTypes.SINGLE:
@@ -72,10 +76,33 @@ def compare_entity_to_json_simple(meta_type_enum, entity, json_entity, json_enti
                     if orig_value is None and not new_value is None or not orig_value is None and new_value is None:
                         changed[log_prefix+field.name] = {"orig_value": orig_value, "new_value": new_value}
                     elif not orig_value is None and not new_value is None:
-                        changed.update(compare_entity_to_json_simple(compare_sub_entity_fields[field], orig_value, new_value, json_entity_map, None, log_prefix="{}#".format(field.name)))
+                        changed.update(compare_entity_to_json_simple(compare_sub_entity_fields[field], orig_value, new_value, json_entity_map, compare_sub_entity_fields_map, log_prefix="{}#".format(field.name)))
             else:
-                if ( json_entity is None and not entity is None ) or ( not json_entity is None and entity is None ) or \
-                     json_entity and entity.access(Operation.GET, None, field) != json_entity.get(Store.get_global_fieldname(field)):
+                entity_changed = False
+                if ( json_entity is None and not entity is None ) or ( not json_entity is None and entity is None ):
+                    entity_changed = True
+                elif json_entity and entity:
+                    value1 = entity.access(Operation.GET, None, field)
+                    value2 = json_entity.get(Store.get_global_fieldname(field))
+                    if value1 is None and not value2 is None or not value1 is None and value2 is None:
+                        entity_changed = True
+                    elif value1 and value2:
+                        if field.datatype == Datatypes.BOOL:
+                            entity_changed = bool(value1) != bool(value2)
+                        elif field.datatype == Datatypes.INT:
+                            entity_changed = int(value1) != int(value2)
+                        elif field.datatype == Datatypes.NUMERIC:
+                            entity_changed = abs(float(value1) - float(value2)) > 0.0001
+                        elif field.datatype == Datatypes.STRING:
+                            entity_changed = str(value1) != str(value2)
+                        elif field.datatype == Datatypes.JSON:
+                            dd = deepdiff.DeepDiff(value1, value2, ignore_order=True)
+                            if dd:
+                                entity_changed = True
+                        else:
+                            entity_changed = value1 != value2
+                    
+                if entity_changed:
                     changed[log_prefix+field.name] = {"orig_value": entity.access(Operation.GET, None, field), "new_value": json_entity.get(Store.get_global_fieldname(field))}
 
         elif field.valuetype == ValueTypes.SET or field.valuetype == ValueTypes.LIST or field.valuetype == ValueTypes.MAP:
@@ -117,7 +144,7 @@ def compare_entity_to_json_simple(meta_type_enum, entity, json_entity, json_enti
                                 for new_entity_global_id in match_to:
                                     new_value = json_entity_map[new_entity_global_id]
                                     if not new_value is None:
-                                        sub_changed = compare_entity_to_json_simple(compare_sub_entity_fields[field], orig_value, new_value, json_entity_map, None, log_prefix="{}#".format(field.name))
+                                        sub_changed = compare_entity_to_json_simple(compare_sub_entity_fields[field], orig_value, new_value, json_entity_map, compare_sub_entity_fields_map, log_prefix="{}#".format(field.name))
                                         if len(sub_changed) == 0:
                                             match_found = True
                                             break
