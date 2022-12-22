@@ -823,7 +823,7 @@ class Entity():
                     e.access(Operation.SET, value, field_config["_enum"])
             elif field == committed_field:
                 if Committed[value] == Committed.SAVED:
-                    self.set_committed()
+                    e.set_committed()
         return e
 
 _entity_map = {}
