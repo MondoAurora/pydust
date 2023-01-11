@@ -2,6 +2,7 @@ from enum import Enum
 from jinja2 import Template
 import traceback
 import json
+import time
 
 from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps, Committed
 from dust.entity import UNIT_ENTITY, EntityTypes, EntityBaseMeta, Store, UnitMeta, TypeMeta
@@ -9,6 +10,8 @@ from dust.events import UNIT_EVENTS, EventTypes
 
 _sql_persister = None
 _types_initiated = set()
+
+UPDATE_BATCH = 500000
 
 def init_sql_persist(unit_name, persist_class, meta_type_enums, deps_func):
     global _sql_persister
@@ -302,46 +305,23 @@ class SqlPersist():
 
         return entities.values()
 
-
-    def insert_entity(self, entity, conn=None):
-        return_value = False
-
-        close_connection = ( conn is None )
-        if conn is None:
-            conn = self._create_connection()
-
-        meta_type = entity.get_meta_type_enum()
-        if meta_type in self.__persisted_types:
-            sql_tables = self.__sql_tables(self.__table_name(meta_type), meta_type.fields_enum)
-            multivalues = {}
-
-            insert_sql = self.__render_tempate(self.insert_into_table_template, sql_table=sql_tables[0])
-            values = self.create_exectute_params()
-            self.add_execute_param(values, "_global_id", entity.global_id())
-            self.add_execute_param(values, "_unit", entity.unit.global_id())
-            self.add_execute_param(values, "_meta_type", entity.meta_type.global_id())
-            self.add_execute_param(values, "_entity_id", entity.entity_id)
-            for field in meta_type.fields_enum:
-                if not field.valuetype in [ValueTypes.LIST, ValueTypes.SET] or field.datatype == Datatypes.JSON and field.valuetype == ValueTypes.LIST:
-                    self.add_execute_param(values, "_"+field.name, self.map_value_to_db(field, entity))
-                else:
-                    multivalue_tablename = "{}_{}".format(sql_tables[0].table_name, field.name)
-                    multivalues[multivalue_tablename] = (field.name, self.map_value_to_db(field, entity))
-
-            try:
-                return_value = self.__update_entity_values(insert_sql, values, conn)
-                if return_value:
+    '''
+    def __insert_entity(self, entity, conn=None):
+        try:
+            return_value = self.__update_entity_values(insert_sql, values, conn)
+            if return_value:
                     return_value = self.__update_entity_multivalues(entity, sql_tables, multivalues, conn, need_delete=False)
-            finally:
-                if close_connection:
-                    self._close_connection(conn)
+            if return_value:
+                entity.set_committed()
 
-        if return_value:
-            entity.set_committed()
+        finally:
+        if close_connection:
+            self._close_connection(conn)
+    '''
 
-        return return_value
-
+    '''
     def __update_entity_multivalues(self, entity, sql_tables, multivalues, conn, need_delete=False):
+        pass
         return_value = True
 
         if len(sql_tables) > 1:
@@ -365,7 +345,74 @@ class SqlPersist():
                                 return_value = self.__update_entity_values(insert_sql, values, conn)
 
         return return_value
+    '''    
 
+    def __prepare_update_entity_multivalues(self, entity, sql_tables, multivalues, update_map, delete_map=None):
+        if len(sql_tables) > 1:
+            for idx, sql_table in enumerate(sql_tables[1:], start=1):
+                if not delete_map is None:
+                    delete_sql = self.__render_tempate(self.delete_template, sql_table=sql_table)
+                    delete_values = self.create_exectute_params(named_param=False)
+                    self.add_execute_param(delete_values, "_global_id", entity.global_id(), named_param=False)
+                    delete_map.setdefault(delete_sql, []).append((None, tuple(delete_values)))
+
+                field_name, multivalues_array = multivalues[sql_table.table_name]
+                if multivalues_array:
+                    insert_sql = self.__render_tempate(self.insert_into_table_template, sql_table=sql_table)
+                    for value_cnt, value in enumerate(multivalues_array):
+                        values = self.create_exectute_params(named_param=False)
+                        self.add_execute_param(values, "_global_id", entity.global_id(), named_param=False)
+                        self.add_execute_param(values, "_value_cnt", value_cnt, named_param=False)
+                        self.add_execute_param(values, "_"+field_name+"_value", value, named_param=False)
+                        update_map.setdefault(insert_sql, []).append((None, tuple(values)))
+
+    def __prepare_insert_entity(self, entity, insert_map):
+        meta_type = entity.get_meta_type_enum()
+        if meta_type in self.__persisted_types:
+            sql_tables = self.__sql_tables(self.__table_name(meta_type), meta_type.fields_enum)
+            multivalues = {}
+
+            insert_sql = self.__render_tempate(self.insert_into_table_template, sql_table=sql_tables[0])
+            values = self.create_exectute_params(named_param=False)
+            self.add_execute_param(values, "_global_id", entity.global_id(), named_param=False)
+            self.add_execute_param(values, "_unit", entity.unit.global_id(), named_param=False)
+            self.add_execute_param(values, "_meta_type", entity.meta_type.global_id(), named_param=False)
+            self.add_execute_param(values, "_entity_id", entity.entity_id, named_param=False)
+            for field in meta_type.fields_enum:
+                if not field.valuetype in [ValueTypes.LIST, ValueTypes.SET] or field.datatype == Datatypes.JSON and field.valuetype == ValueTypes.LIST:
+                    self.add_execute_param(values, "_"+field.name, self.map_value_to_db(field, entity), named_param=False)
+                else:
+                    multivalue_tablename = "{}_{}".format(sql_tables[0].table_name, field.name)
+                    multivalues[multivalue_tablename] = (field.name, self.map_value_to_db(field, entity))
+
+            insert_map.setdefault(insert_sql, []).append((entity, tuple(values)))
+            self.__prepare_update_entity_multivalues(entity, sql_tables, multivalues, insert_map)
+
+
+    def __prepare_update_entity(self, entity, update_map, delete_map):
+        meta_type = entity.get_meta_type_enum()
+        if meta_type in self.__persisted_types:
+            sql_tables = self.__sql_tables(self.__table_name(meta_type), meta_type.fields_enum)
+
+            update_sql = self.__render_tempate(self.update_template, sql_table=sql_tables[0])
+            values = self.create_exectute_params(named_param=False)
+
+            multivalues = {}
+
+            for field in meta_type.fields_enum:
+                if not field.valuetype in [ValueTypes.LIST, ValueTypes.SET] or field.datatype == Datatypes.JSON and field.valuetype == ValueTypes.LIST:
+                    self.add_execute_param(values, "_"+field.name, self.map_value_to_db(field, entity), named_param=False)
+                else:
+                    multivalue_tablename = "{}_{}".format(sql_tables[0].table_name, field.name)
+                    multivalues[multivalue_tablename] = (field.name, self.map_value_to_db(field, entity))
+
+            self.add_execute_param(values, "_global_id", entity.global_id(), named_param=False)
+
+            update_map.setdefault(update_sql, []).append((entity, tuple(values)))
+            self.__prepare_update_entity_multivalues(entity, sql_tables, multivalues, update_map, delete_map)
+
+
+    '''
     def update_entity(self, entity, conn=None):
         return_value = False
 
@@ -401,35 +448,114 @@ class SqlPersist():
             entity.set_committed()
 
         return return_value
-
-    def __update_entity_values(self, update_sql, values, conn):
-        return_value = False
-
-        try:
-            c = self._create_cursor(conn)
-            #if update_sql.startswith("UPDATE"):
-            #   print("Updating {} with {}".format(values, update_sql))
-            c.execute(update_sql, values)
-
-            return_value = True
-        finally:
-            self._close_cursor(c)
-
-        return return_value
+    '''
 
     def persist_entities(self, entities):
         conn = None
+        cnt = 0
+        return_value = True
+        committed_entities = []
         try:
+            print("Persist {} entities".format(len(entities)))
             conn = self._create_connection()
+            conn.autocommit = False
+
+            update_map = {}
+            delete_map = {}
+            cnt = 0
+            for e in entities:
+                if e.committed == Committed.UPDATED:
+                    self.__prepare_update_entity(e, update_map, delete_map)
+                    cnt += 1
+                
+                if cnt % UPDATE_BATCH == 0:
+                    print("Update: {}".format(cnt))
+                    if return_value and delete_map:
+                        return_value = self.__update_entity_values(conn, delete_map, "delete", committed_entities)
+                        delete_map.clear()
+                    if return_value and update_map:
+                        return_value = self.__update_entity_values(conn, update_map, "update", committed_entities)
+                        update_map.clear()
+                    if not return_value:
+                        raise Exception("Update failed")
+                    cnt = 0
+
+            if return_value and ( update_map or delete_map ):
+                print("Update: {}".format(cnt))
+                if return_value and delete_map:
+                    return_value = self.__update_entity_values(conn, delete_map, "delete", committed_entities)
+                    delete_map.clear()
+                if return_value and update_map:
+                    return_value = self.__update_entity_values(conn, update_map, "update", committed_entities)
+                    update_map.clear()
+                if not return_value:
+                    raise Exception("Update failed")
+
+            insert_map = {}
+            cnt = 0
             for e in entities:
                 if e.committed == Committed.CREATED:
-                    self.insert_entity(e, conn)
-                elif e.committed == Committed.UPDATED:
-                    self.update_entity(e, conn)
-                elif e.committed == Committed.DELETED:
-                    pass
+                    self.__prepare_insert_entity(e, insert_map)
+                    cnt += 1
+
+                if return_value and insert_map and cnt % UPDATE_BATCH == 0:
+                    print("Insert: {}".format(cnt))
+                    return_value = self.__update_entity_values(conn, insert_map, "insert", committed_entities)
+                    insert_map.clear()
+                    if not return_value:
+                        raise Exception("Insert failed")
+                    cnt = 0
+
+            if return_value and insert_map:
+                cnt = len(insert_map)
+                print("Insert: {}".format(cnt))
+                return_value = self.__update_entity_values(conn, insert_map, "insert", committed_entities)
+                insert_map.clear()
+                if not return_value:
+                    raise Exception("Insert failed")
+
+
+            if return_value:
+                conn.commit()
+                print("Committing {} entities".format(len(committed_entities)))
+                for e in committed_entities:
+                    e.set_committed()
+            else:
+                conn.rollback()
+
+        except:
+            traceback.print_exc()
+            conn.rollback()
+            return_value = False
         finally:
             self._close_connection(conn)
+
+        return return_value
+
+    def __update_entity_values(self, conn, map, update_type, committed_entities):
+        print("Start executing {}: {}".format(update_type, len(map.keys())))
+        sorted_keys = sorted(map, key=lambda k: len(map[k]))
+        for sql in sorted_keys:
+            try:
+                value_array = map[sql]
+                c = self._create_cursor(conn, prepared=True, buffered=False)
+                start = time.time()
+                print("SQL: {}, number of values: {}".format(sql, len(value_array)))
+                for entity, values in value_array:
+                    if " entity_" in sql:
+                        print(str(values))
+                    c.execute(sql, values)
+                    if entity:
+                        committed_entities.append(entity)
+                end = time.time()
+                print("Finished executing in {}".format(end-start))
+
+            except:
+                raise Exception("Update failed for sql {}".format(sql))
+            finally:
+                self._close_cursor(c)
+
+        return True
 
     def __render_tempate(self, template_func, *args, **kwargs):
         try: 

@@ -279,8 +279,6 @@ class Store():
 
     @staticmethod
     def load_types_from_enum(e, unit_meta_id):
-        entity_map = globals()["_entity_map"]
-        #meta_ref = globals()["_meta_ref"]
         enum_map = globals()["_enum_map"]
         unit_meta_types = {}
         for meta_type in e:
@@ -309,12 +307,6 @@ class Store():
                 enum_map[field_meta_type] = meta_type
                 enum_map[field_meta_type.global_id()] = meta_type
 
-                #print("Unit name: {} ({}), meta_type: {}, global id: {}".format(unit.access(Operation.GET, None, UnitMeta.name), field_meta_type.unit.global_id(), meta_type.name ,field_meta_type.global_id()))
-
-
-            field_config = {}
-
-            max_order = 0
             field_entities = []
             max_id_value = 0
             for field in meta_type.fields_enum:
@@ -330,7 +322,6 @@ class Store():
 
                 if field.id_value > max_id_value:
                     max_id_value = field.id_value
-
 
             for field_entity in field_entities:
                 field_meta_type.access(Operation.ADD, field_entity, TypeMeta.fields)

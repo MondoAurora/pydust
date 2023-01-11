@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS {{sql_table.table_name}} (\n\
 )\n\
 "
 
-
+'''
 INSERT_INTO_TABLE_TEMPLATE = "\
 INSERT INTO {{sql_table.table_name}} (\
 {% for field in sql_table.fields %}\
@@ -47,6 +47,19 @@ INSERT INTO {{sql_table.table_name}} (\
 {% endfor %}\
 )\
 "
+'''
+INSERT_INTO_TABLE_TEMPLATE = "\
+INSERT INTO {{sql_table.table_name}} (\
+{% for field in sql_table.fields %}\
+{{ field.field_name }}{% if not loop.last %},{% endif %}\
+{% endfor %}\
+) VALUES (\
+{% for field in sql_table.fields %}\
+%s{% if not loop.last %},{% endif %}\
+{% endfor %}\
+)\
+"
+
 
 SELECT_TEMPLATE = "\
 SELECT \
@@ -66,6 +79,7 @@ WHERE \
 {% endif %}\
 "
 
+'''
 UPDATE_TEMPLATE = "\
 UPDATE {{sql_table.table_name}} SET \
 {% for field in sql_table.fields %}\
@@ -74,10 +88,25 @@ UPDATE {{sql_table.table_name}} SET \
 WHERE \
 {% for field in sql_table.primary_keys %}{{ field.field_name }} = %({{ field.field_name }})s{% if not loop.last %},{% endif %}{% endfor %} \
 "
+'''
+UPDATE_TEMPLATE = "\
+UPDATE {{sql_table.table_name}} SET \
+{% for field in sql_table.fields %}\
+{% if not field.primary_key and not field.base_field %}{{ field.field_name }} = %s{% if not loop.last %},{% endif %}{% endif %} \
+{% endfor %}\
+WHERE \
+{% for field in sql_table.primary_keys %}{{ field.field_name }} = %s{% if not loop.last %},{% endif %}{% endfor %} \
+"
 
+'''
 DELETE_TEMPLATE = "\
 DELETE FROM {{sql_table.table_name}} \
 WHERE _global_id = %(_global_id)s\
+"
+'''
+DELETE_TEMPLATE = "\
+DELETE FROM {{sql_table.table_name}} \
+WHERE _global_id = %s\
 "
 
 MYSQL_USER = os.environ.get('MYSQL_USER')
@@ -108,9 +137,9 @@ class MySQLPersist(SqlPersist):
             conn.commit()
             conn.close()
 
-    def __create_cursor(self, conn):
+    def __create_cursor(self, conn, prepared=False, buffered=True):
         if conn:
-            return conn.cursor(buffered=True)
+            return conn.cursor(buffered=buffered, prepared=prepared)
 
     def __close_cursor(self, c):
         if c:
@@ -124,17 +153,28 @@ class MySQLPersist(SqlPersist):
             "_close_cursor": self.__close_cursor
         }
 
-    def create_exectute_params(self):
-        return {}
-
-    def add_execute_param(self, values, name, value, operator="="):
-        if operator and operator.lower() == "in":
-            cnt = 1
-            for v in value:
-                values[name+str(cnt)] = v
-                cnt += 1
+    def create_exectute_params(self, named_param=True):
+        if named_param:
+            return {}
         else:
-            values[name] = value
+            return []
+
+    def add_execute_param(self, values, name, value, operator="=", named_param=True):
+        if named_param:
+            if operator and operator.lower() == "in":
+                cnt = 1
+                for v in value:
+                    values[name+str(cnt)] = v
+                    cnt += 1
+            else:
+                values[name] = value
+        else:
+            if operator and operator.lower() == "in":
+                cnt = 1
+                for v in value:
+                    values.append(v)
+            else:
+                values.append(value)
 
     def table_exits(self, table_name, conn):
         try:
