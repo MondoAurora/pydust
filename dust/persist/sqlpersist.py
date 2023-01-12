@@ -305,48 +305,6 @@ class SqlPersist():
 
         return entities.values()
 
-    '''
-    def __insert_entity(self, entity, conn=None):
-        try:
-            return_value = self.__update_entity_values(insert_sql, values, conn)
-            if return_value:
-                    return_value = self.__update_entity_multivalues(entity, sql_tables, multivalues, conn, need_delete=False)
-            if return_value:
-                entity.set_committed()
-
-        finally:
-        if close_connection:
-            self._close_connection(conn)
-    '''
-
-    '''
-    def __update_entity_multivalues(self, entity, sql_tables, multivalues, conn, need_delete=False):
-        pass
-        return_value = True
-
-        if len(sql_tables) > 1:
-            for idx, sql_table in enumerate(sql_tables[1:], start=1):
-                if return_value:
-                    if need_delete:
-                        delete_sql = self.__render_tempate(self.delete_template, sql_table=sql_table)
-                        delete_values = self.create_exectute_params()
-                        self.add_execute_param(delete_values, "_global_id", entity.global_id())
-                        return_value = self.__update_entity_values(delete_sql, delete_values, conn)
-
-                    if return_value:
-                        field_name, multivalues_array = multivalues[sql_table.table_name]
-                        if multivalues_array:
-                            insert_sql = self.__render_tempate(self.insert_into_table_template, sql_table=sql_table)
-                            for value_cnt, value in enumerate(multivalues_array):
-                                values = self.create_exectute_params()
-                                self.add_execute_param(values, "_global_id", entity.global_id())
-                                self.add_execute_param(values, "_value_cnt", value_cnt)
-                                self.add_execute_param(values, "_"+field_name+"_value", value)
-                                return_value = self.__update_entity_values(insert_sql, values, conn)
-
-        return return_value
-    '''    
-
     def __prepare_update_entity_multivalues(self, entity, sql_tables, multivalues, update_map, delete_map=None):
         if len(sql_tables) > 1:
             for idx, sql_table in enumerate(sql_tables[1:], start=1):
@@ -411,44 +369,6 @@ class SqlPersist():
             update_map.setdefault(update_sql, []).append((entity, tuple(values)))
             self.__prepare_update_entity_multivalues(entity, sql_tables, multivalues, update_map, delete_map)
 
-
-    '''
-    def update_entity(self, entity, conn=None):
-        return_value = False
-
-        close_connection = ( conn is None )
-        if conn is None:
-            conn = self._create_connection()
-        meta_type = entity.get_meta_type_enum()
-        if meta_type in self.__persisted_types:
-            sql_tables = self.__sql_tables(self.__table_name(meta_type), meta_type.fields_enum)
-            try:
-                update_sql = self.__render_tempate(self.update_template, sql_table=sql_tables[0])
-                values = self.create_exectute_params()
-                self.add_execute_param(values, "_global_id", entity.global_id())
-
-                multivalues = {}
-
-                for field in meta_type.fields_enum:
-                    if not field.valuetype in [ValueTypes.LIST, ValueTypes.SET] or field.datatype == Datatypes.JSON and field.valuetype == ValueTypes.LIST:
-                        self.add_execute_param(values, "_"+field.name, self.map_value_to_db(field, entity))
-                    else:
-                        multivalue_tablename = "{}_{}".format(sql_tables[0].table_name, field.name)
-                        multivalues[multivalue_tablename] = (field.name, self.map_value_to_db(field, entity))
-
-                return_value = self.__update_entity_values(update_sql, values, conn)
-                if return_value:
-                    return_value = self.__update_entity_multivalues(entity, sql_tables, multivalues, conn, need_delete=True)
-
-            finally:
-                if close_connection:
-                    self._close_connection(conn)
-
-        if return_value:
-            entity.set_committed()
-
-        return return_value
-    '''
 
     def persist_entities(self, entities):
         conn = None
@@ -542,8 +462,8 @@ class SqlPersist():
                 start = time.time()
                 print("SQL: {}, number of values: {}".format(sql, len(value_array)))
                 for entity, values in value_array:
-                    if " entity_" in sql:
-                        print(str(values))
+                    #if " entity_" in sql:
+                    #    print(str(values))
                     c.execute(sql, values)
                     if entity:
                         committed_entities.append(entity)
