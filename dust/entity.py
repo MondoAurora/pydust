@@ -249,6 +249,7 @@ class Store():
 
         return e
 
+    @staticmethod
     def _add_entity_to_store(e):
         entity_map = globals()["_entity_map"]
 
@@ -261,6 +262,12 @@ class Store():
             committed_field: e.committed.name
         }, e)
 
+    @staticmethod
+    def _delete_entity_to_store(e):
+        entity_map = globals()["_entity_map"]
+
+        if e.global_id() in entity_map:
+            del entity_map[e.global_id()]
 
     @staticmethod
     def increment_unit_counter(unit, requested_id):
@@ -816,6 +823,9 @@ class Entity():
                 if Committed[value] == Committed.SAVED:
                     e.set_committed()
         return e
+
+    def delete(self):
+        Store._delete_entity_to_store(self)
 
 _entity_map = {}
 _enum_map = {}
