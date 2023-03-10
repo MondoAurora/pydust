@@ -52,9 +52,9 @@ SELECT \
 {{ field.field_name }}{% if not loop.last %},{% endif %} \
 {% endfor %}\
 FROM {{sql_table.table_name}} \
-{% if filters %}\
+{% if where_filters %}\
 WHERE \
-{% for filter in filters %}\
+{% for filter in where_filters %}\
 filter[0] filter[1] ? {% if not loop.last %}AND {% endif %}\
 {% endfor %}\
 {% endif %}\
@@ -144,7 +144,7 @@ class SqlitePersist(SqlPersist):
     def insert_into_table_template(self):
         return INSERT_INTO_TABLE_TEMPLATE
 
-    def select_template(self, filters):
+    def select_template(self, where_filters):
         return SELECT_TEMPLATE
 
     def update_template(self):

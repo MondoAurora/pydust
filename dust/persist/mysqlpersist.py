@@ -67,9 +67,9 @@ SELECT \
 {{ field.field_name }}{% if not loop.last %},{% endif %} \
 {% endfor %}\
 FROM {{sql_table.table_name}} \
-{% if filters %}\
+{% if where_filters %}\
 WHERE \
-{% for filter in filters %}\
+{% for filter in where_filters %}\
 {% if filter[1]|lower == 'in' %}\
 {{ filter[0] }} {{ filter[1] }} ({% for v in filter[2] %}%({{ filter[0] }}{{loop.index}})s{% if not loop.last %},{% endif %}{% endfor %}) {% if not loop.last %}AND {% endif %}\
 {% else %}\
@@ -212,7 +212,7 @@ class MySQLPersist(SqlPersist):
     def insert_into_table_template(self):
         return INSERT_INTO_TABLE_TEMPLATE
 
-    def select_template(self, filters):
+    def select_template(self, where_filters):
         return SELECT_TEMPLATE
 
     def update_template(self):

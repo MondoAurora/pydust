@@ -41,9 +41,9 @@ def load_units():
     global _sql_persister
     return _sql_persister.load_units()    
 
-def load_unit_type(unit_meta_type, filters=None, load_referenced=False):
+def load_unit_type(unit_meta_type, where_filters=None, load_referenced=False, entity_filter_method=None):
     global _sql_persister
-    return _sql_persister.load_type(unit_meta_type, filters=filters, load_referenced=load_referenced)    
+    return _sql_persister.load_type(unit_meta_type, where_filters=where_filters, load_referenced=load_referenced, entity_filter_method=entity_filter_method)    
 
 def load_entity_ids_for_type(unit_meta_type):
     global _sql_persister
@@ -94,7 +94,7 @@ class SqlPersist():
     def insert_into_table_template(self):
         pass
 
-    def select_template(self, filters):
+    def select_template(self, where_filters):
         pass
 
     def update_template(self):
@@ -160,11 +160,11 @@ class SqlPersist():
 
         return entities
 
-    def load_type(self, unit_meta, filters=None, load_referenced=False):
+    def load_type(self, unit_meta, where_filters=None, load_referenced=False, entity_filter_method=None):
         entities = []
 
         if unit_meta.type_name[0] != "_":
-            entities = self.load_entities(unit_meta, filters=filters, conn=None)
+            entities = self.load_entities(unit_meta, where_filters=where_filters, conn=None, entity_filter_method=entity_filter_method)
 
         if load_referenced:
             loaded_global_ids = set()
@@ -185,12 +185,13 @@ class SqlPersist():
                     break
 
                 for meta_type, global_ids in load_map.items():
-                    loaded = self.load_entities(meta_type, filters=[("_entity_id", "in", global_ids)])
+                    # Sub entities are always loaded, so do not apply entity_filter_method
+                    loaded = self.load_entities(meta_type, where_filters=[("_entity_id", "in", global_ids)])
                     loaded_global_ids.update([e.global_id() for e in loaded])
 
         return entities
 
-    def load_entity_ids_for_type(self, meta_type, filters=None, conn=None):
+    def load_entity_ids_for_type(self, meta_type, where_filters=None, conn=None):
         entity_ids = []
 
         close_connection = ( conn is None )
@@ -201,14 +202,14 @@ class SqlPersist():
             sql_tables = self.__sql_tables(self.__table_name(meta_type), meta_type.fields_enum)
 
             try:
-                select_sql = self.__render_tempate(self.select_template, filters, sql_table=sql_tables[0], filters=filters)
+                select_sql = self.__render_tempate(self.select_template, where_filters, sql_table=sql_tables[0], where_filters=where_filters)
 
                 c = self._create_cursor(conn)
 
-                print("{} with {}".format(select_sql, filters))
-                if filters:
+                print("{} with {}".format(select_sql, where_filters))
+                if where_filters:
                     values = self.create_exectute_params()
-                    for f in filters:
+                    for f in where_filters:
                         self.add_execute_param(values, f[0], f[2], f[1])
                     c.execute(select_sql, values)
                 else:
@@ -226,7 +227,7 @@ class SqlPersist():
 
         return entity_ids
 
-    def load_entities(self, meta_type, filters=None, conn=None):
+    def load_entities(self, meta_type, where_filters=None, conn=None, entity_filter_method=None):
         entities = {}
 
         close_connection = ( conn is None )
@@ -237,14 +238,14 @@ class SqlPersist():
             sql_tables = self.__sql_tables(self.__table_name(meta_type), meta_type.fields_enum)
 
             try:
-                select_sql = self.__render_tempate(self.select_template, filters, sql_table=sql_tables[0], filters=filters)
+                select_sql = self.__render_tempate(self.select_template, where_filters, sql_table=sql_tables[0], where_filters=where_filters)
 
                 c = self._create_cursor(conn)
 
-                #print("{} with {}".format(select_sql, filters))
-                if filters:
+                #print("{} with {}".format(select_sql, where_filters))
+                if where_filters:
                     values = self.create_exectute_params()
-                    for f in filters:
+                    for f in where_filters:
                         self.add_execute_param(values, f[0], f[2], f[1])
                     c.execute(select_sql, values)
                 else:
@@ -274,7 +275,11 @@ class SqlPersist():
                             index += 1
 
                     entity.set_committed()
-                    entities[row[0]] = entity
+                    if entity_filter_method is None or entity_filter_method(entity):
+                        entities[row[0]] = entity
+                    elif entity_filter_method is not None:
+                        entity.delete()
+                        global_ids.remove(row[0])
             finally:
                 self._close_cursor(c)
 
@@ -286,7 +291,7 @@ class SqlPersist():
                         if stbl.table_name == "{}_{}".format(sql_tables[0].table_name, field.name):
                             multivalue_sql_table = stbl
                             break
-                    multivalue_select_sql = self.__render_tempate(self.select_template, None, sql_table=multivalue_sql_table, filters=None)
+                    multivalue_select_sql = self.__render_tempate(self.select_template, None, sql_table=multivalue_sql_table, filtwhere_filtersers=None)
                     try:
                         c = self._create_cursor(conn)
                         #print("{}".format(multivalue_select_sql))
