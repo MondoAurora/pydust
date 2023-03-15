@@ -244,6 +244,8 @@ class MySQLPersist(SqlPersist):
     def sql_type(self, datatype, valuetype, primary_key=False):
         if primary_key and datatype == Datatypes.STRING:
             return "VARCHAR(100)"
+        elif valuetype == ValueTypes.SINGLE and datatype == Datatypes.BYTES:
+            return "MEDIUMBLOB"
         elif valuetype == ValueTypes.SINGLE:
             return SQL_TYPE_MAP[datatype]
         else:
