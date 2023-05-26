@@ -412,6 +412,8 @@ def start_queue_processor(queue, log):
             break
         except:
             traceback.print_exc()
+        finally:
+            _queue.task_done()
 
 def create_message(message_type, message_params, entities):
     for callback_name, listener in _listeners.items():
