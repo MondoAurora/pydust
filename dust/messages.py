@@ -358,6 +358,7 @@ class MessageQueue():
             if to_close and not to_close.closed:
                 to_close.close() 
 
+
 def register_listener(name, entity_filter, cb):
     _listeners[name] = (entity_filter, cb)
 
@@ -369,6 +370,9 @@ def unregister_listener(name):
 _stop = False
 _queue = MessageQueue(PATH)
 _listeners = {}
+
+def queue_join():
+    _queue.join()
 
 def signal_finish():
     global _stop
@@ -426,4 +430,7 @@ def create_message(message_type, message_params, entities):
 
 
 _queue_processor = threading.Thread(target=start_queue_processor, args=(_queue, _log, ), daemon=False)
-_queue_processor.start()
+try:
+    _queue_processor.start()
+finally:
+    _queue.join()
