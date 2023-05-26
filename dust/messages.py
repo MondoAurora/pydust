@@ -430,7 +430,4 @@ def create_message(message_type, message_params, entities):
 
 
 _queue_processor = threading.Thread(target=start_queue_processor, args=(_queue, _log, ), daemon=False)
-try:
-    _queue_processor.start()
-finally:
-    _queue.join()
+_queue_processor.start()
