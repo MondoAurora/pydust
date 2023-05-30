@@ -377,6 +377,7 @@ def queue_join():
 def signal_finish():
     global _stop
 
+    _queue.join()
     _stop = True
     _queue.put(Store.access(Operation.GET, None, UNIT_MESSAGES, None, MessageTypes.message))
 
