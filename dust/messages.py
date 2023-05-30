@@ -373,6 +373,7 @@ _listeners = {}
 def signal_finish():
     global _stop
 
+    _queue.join()
     _stop = True
     _queue.put(Store.access(Operation.GET, None, UNIT_MESSAGES, None, MessageTypes.message))
 
@@ -408,6 +409,8 @@ def start_queue_processor(queue, log):
             break
         except:
             traceback.print_exc()
+        finally:
+            _queue.task_done()
 
 def create_message(message_type, message_params, entities):
     for callback_name, listener in _listeners.items():
