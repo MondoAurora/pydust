@@ -48,6 +48,32 @@ class EntityTypes(FieldProps):
     unit = (UNIT_ENTITY_META, UnitMeta, 3)
     meta_field = (UNIT_ENTITY_META, MetaField, 4)
 
+class EntityJsonSerializer():
+    def dump(self, obj, fp):
+        if isinstance(obj, Entity):
+            fp.write(json.dumps(obj.to_json()).encode())
+            fp.write(b"\n")
+        elif isinstance(obj, list):
+            objs = []
+            for e in obj:
+                if isinstance(e, Entity):
+                    objs.append(e.to_json())
+                else:
+                    raise ValueError("Only entity object can be serialized!")
+            fp.write(json.dumps(objs).encode())
+            fp.write(b"\n")
+        else:
+            raise ValueError("Only entity object can be serialized!")
+
+    def load(self, f):
+        try:
+            data = json.loads(f.readline().decode())
+            if not isinstance(data, list):
+                data = [data]
+            return Store.from_json(data)
+        except:
+            raise ValueError("Invalid json data in messagequeue!")
+
 def get_unit_deps_tuple(module_name, unit_name, meta_type_enums):
     module = import_module(module_name)
     unit_name_attr = getattr(module, unit_name)
