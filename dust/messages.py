@@ -7,12 +7,13 @@ import threading
 import codecs
 import traceback
 import time
+from queue import Queue
 
 from enum import Enum
 from dust import Datatypes, ValueTypes, Operation, MetaProps, FieldProps
 from dust.entity import Store, Entity, get_unit_deps_tuple
 
-PATH = "/var/local/beaconing/messagequeue"
+#PATH = "/var/local/beaconing/messagequeue"
 
 UNIT_MESSAGES = "messages"
 UNIT_MESSAGES_META = "messages_meta"
@@ -53,12 +54,13 @@ handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.DEBUG)
 _log.addHandler(handler)
 
+
 class EmptyMessageQueue(Exception):
     pass
 
 class FullMessageQueue(Exception):
     pass
-
+'''
 def _truncate(fn, length):
     with open(fn, 'ab+') as f:
         f.truncate(length)
@@ -68,32 +70,6 @@ def atomic_rename(src, dst):
         os.replace(src, dst)
     except: 
         traceback.print_exc()
-
-class EntityJsonSerializer():
-    def dump(self, obj, fp):
-        if isinstance(obj, Entity):
-            fp.write(json.dumps(obj.to_json()).encode())
-            fp.write(b"\n")
-        elif isinstance(obj, list):
-            objs = []
-            for e in obj:
-                if isinstance(e, Entity):
-                    objs.append(e.to_json())
-                else:
-                    raise ValueError("Only entity object can be serialized!")
-            fp.write(json.dumps(objs).encode())
-            fp.write(b"\n")
-        else:
-            raise ValueError("Only entity object can be serialized!")
-
-    def load(self, f):
-        try:
-            data = json.loads(f.readline().decode())
-            if not isinstance(data, list):
-                data = [data]
-            return Store.from_json(data)
-        except:
-            raise ValueError("Invalid json data in messagequeue!")
 
 
 class MessageQueue():
@@ -199,6 +175,7 @@ class MessageQueue():
                         raise FullMessageQueue
                 elif timeout is None:
                     while self._qsize() == self.maxsize:
+                        print("waiting for not full")
                         self.not_full.wait()
                 elif timeout < 0:
                     raise ValueError("'timeout' must be a non-negative number")
@@ -208,6 +185,7 @@ class MessageQueue():
                         remaining = endtime - _time()
                         if remaining <= 0.0:
                             raise FullMessageQueue
+                        print("waiting for not full")
                         self.not_full.wait(remaining)
             self._put(item)
             self.unfinished_tasks += 1
@@ -357,7 +335,7 @@ class MessageQueue():
         for to_close in [self.headf, self.tailf]:
             if to_close and not to_close.closed:
                 to_close.close() 
-
+'''
 def register_listener(name, entity_filter, cb):
     _listeners[name] = (entity_filter, cb)
 
@@ -367,7 +345,7 @@ def unregister_listener(name):
         del _listeners[name]
 
 _stop = False
-_queue = MessageQueue(PATH)
+_queue = Queue()
 _listeners = {}
 
 def signal_finish():
@@ -382,21 +360,20 @@ def start_queue_processor(queue, log):
 
     while True:
         try:
-            item = _queue.get()
-            if item == None:
+            entity = _queue.get()
+            if entity == None:
                 time.sleep(0.5)
             else:
-                _log.debug("Processing item: {}".format([i.global_id() for i in item]))
-                for entity in item:
-                    try:
-                        _listeners[entity.access(Operation.GET, None, MessageMeta.callback_name)][1](
-                            entity.access(Operation.GET, None, MessageMeta.message_type),
-                            entity.access(Operation.GET, None, MessageMeta.message_params),
-                            entity.access(Operation.GET, None, MessageMeta.entities)
-                        )
-                    except KeyError:
-                        if entity.access(Operation.GET, None, MessageMeta.callback_name):
-                            _log.error("Invalid callback registered: {}".format(entity.access(Operation.GET, None, MessageMeta.callback_name)))
+                _log.debug("Processing item: {}".format(entity.global_id()))
+                try:
+                    _listeners[entity.access(Operation.GET, None, MessageMeta.callback_name)][1](
+                        entity.access(Operation.GET, None, MessageMeta.message_type),
+                        entity.access(Operation.GET, None, MessageMeta.message_params),
+                        entity.access(Operation.GET, None, MessageMeta.entities)
+                    )
+                except KeyError:
+                    if entity.access(Operation.GET, None, MessageMeta.callback_name):
+                        _log.error("Invalid callback registered: {}".format(entity.access(Operation.GET, None, MessageMeta.callback_name)))
             if _stop:
                 break
 
