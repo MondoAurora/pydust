@@ -26,7 +26,7 @@ README = (HERE / "README.md").read_text()
 # This call to setup() does all the work
 setup(
     name="PyDust",
-    version="0.0.30",
+    version="0.0.31",
     description="PyDust",
     long_description=README,
     long_description_content_type="text/markdown",

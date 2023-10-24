@@ -13,7 +13,7 @@ SQL_TYPE_MAP = {
     Datatypes.NUMERIC: "DOUBLE",
     Datatypes.BOOL: "TINYINT",
     Datatypes.STRING: "TEXT",
-    Datatypes.BYTES: "BLOB",
+    Datatypes.BYTES: "MEDIUMBLOB",
     Datatypes.JSON: "TEXT",
     Datatypes.ENTITY: "TEXT"
 }
@@ -229,6 +229,18 @@ class MySQLPersist(SqlPersist):
                 return 0
         elif field.datatype == Datatypes.ENTITY and isinstance(value, Entity):
             return value.global_id()
+        elif SQL_TYPE_MAP[field.datatype] == "TEXT":
+            if value is not None and len(value) > 65500:
+                print(f"Trunctating value to 65500 for {field.name}")
+                return value[:65500]
+            else:
+                return value
+        elif SQL_TYPE_MAP[field.datatype] == "MEDIUMBLOB":
+            if value is not None and len(value) > 16777000:
+                print(f"Value is longer than max size, returning None for {field.name}")
+                return None
+            else:
+                return value
         else:
             return value
 
@@ -244,8 +256,6 @@ class MySQLPersist(SqlPersist):
     def sql_type(self, datatype, valuetype, primary_key=False):
         if primary_key and datatype == Datatypes.STRING:
             return "VARCHAR(100)"
-        elif valuetype == ValueTypes.SINGLE and datatype == Datatypes.BYTES:
-            return "MEDIUMBLOB"
         elif valuetype == ValueTypes.SINGLE:
             return SQL_TYPE_MAP[datatype]
         else:

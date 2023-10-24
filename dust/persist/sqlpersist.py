@@ -476,7 +476,7 @@ class SqlPersist():
                 print("Finished executing in {}".format(end-start))
 
             except:
-                raise Exception("Update failed for sql {}".format(sql))
+                raise Exception("Update failed for sql {} - {}".format(sql, map[sql]))
             finally:
                 self._close_cursor(c)
 
