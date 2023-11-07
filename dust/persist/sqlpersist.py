@@ -51,7 +51,11 @@ def load_entity_ids_for_type(unit_meta_type):
 
 def persist_entities(entities):
     global _sql_persister
-    _sql_persister.persist_entities(entities)    
+    _sql_persister.persist_entities(entities)   
+
+def  dump_database(stream):
+    global _sql_persister
+    _sql_persister.dump_database(stream)
 
 class SqlField():
     def __init__(self, field_name, field_type, primary_key=False, base_field=False):
@@ -564,3 +568,76 @@ class SqlPersist():
         #    print(sch)
 
         return schema
+    
+    def dump_database(self, stream):
+        conn = self._create_connection()
+
+        try:
+            c = self._create_cursor(conn, buffered=False)
+
+            c.execute("SHOW TABLES")
+            tables = []
+            for table in c.fetchall():
+                tables.append(table[0])
+
+            for table in tables:
+                #print(f"Processing {table}")
+                stream.write("DROP TABLE IF EXISTS `" + str(table) + "`;\n")
+
+                c.execute("SHOW CREATE TABLE `" + str(table) + "`;")
+                stream.write("\n" + str(c.fetchone()[1]) + ";\n\n");
+
+                # Get fields:
+                c.execute("DESCRIBE `" + str(table) + "`;")
+                fields = []
+                for field in c.fetchall():
+                    field_type = field[1]
+                    if field_type.lower() in ["binary", "varbinary", "blob", "mediumblob", "longblob"]:
+                        fields.append((f"HEX({field[0]})", field[0], True)) 
+                    else:
+                        fields.append((field[0], field[0], False)) 
+
+
+                c.execute("SELECT {} FROM `{}`;".format(",".join(f[0] for f in fields), table))
+                row = c.fetchone()
+                row_index = 0
+                first_row = True
+                while row is not None:
+                    if row_index % 100 == 0:
+                        if not first_row:
+                            stream.write(";\n")
+                        stream.write("INSERT INTO `{}` ({})\nVALUES".format(table, ",".join(f[1] for f in fields)))
+                        first_row = True
+
+                    if not first_row:
+                        stream.write(",")
+                    stream.write("\n(")
+                    first_row = False
+                    first = True
+                    for field_idx in range(len(fields)):
+                        field = fields[field_idx]
+                        if not first:
+                            stream.write(",");
+                        if row[field_idx] is None:
+                            stream.write("NULL")
+                        elif field[2]:
+                            stream.write(f"UNHEX(\"{row[field_idx]}\")")
+                        elif isinstance(row[field_idx], str):
+                            escaped_value = row[field_idx].replace('"',r'\"')
+                            stream.write(f"\"{escaped_value}\"")
+                        else:
+                            stream.write(f"\"{row[field_idx]}\"")
+                        first = False
+                    stream.write(")")
+
+                    row = c.fetchone()
+                    row_index += 1
+
+                stream.write(";\n\n")
+
+            self._close_cursor(c)
+
+        except:
+            traceback.print_exc()
+        finally:
+            self._close_connection(conn)
