@@ -35,6 +35,17 @@ CREATE TABLE IF NOT EXISTS {{sql_table.table_name}} (\n\
 )\n\
 "
 
+ALTER_TABLE_TEMPLATE = "\
+ALTER TABLE {{sql_table.table_name}} \n\
+    {% for field_mod in field_modifications %}\
+    {{ field_mod }}{% if not loop.last %},{% endif %}\n\
+    {% endfor %}\
+\n\
+"
+
+DROP_TABLE_TEMPLATE = "\
+DROP TABLE {{sql_table.table_name}}"
+
 '''
 INSERT_INTO_TABLE_TEMPLATE = "\
 INSERT INTO {{sql_table.table_name}} (\
@@ -98,15 +109,15 @@ WHERE \
 {% for field in sql_table.primary_keys %}{{ field.field_name }} = %s{% if not loop.last %},{% endif %}{% endfor %} \
 "
 
-'''
-DELETE_TEMPLATE = "\
-DELETE FROM {{sql_table.table_name}} \
-WHERE _global_id = %(_global_id)s\
-"
-'''
 DELETE_TEMPLATE = "\
 DELETE FROM {{sql_table.table_name}} \
 WHERE _global_id = %s\
+"
+
+DELETE_TEMPLATE_WITH_WHERE = "\
+DELETE FROM {{sql_table}} \
+WHERE \
+{% for where_filter in where_filters %}{{ where_filter[0] }} {{ where_filter[1] }} %({{ where_filter[0] }})s{% if not loop.last %} and {% endif %}{% endfor %} \
 "
 
 MYSQL_USER = os.environ.get('MYSQL_USER')
@@ -183,7 +194,7 @@ class MySQLPersist(SqlPersist):
             rows = cursor.fetchall()
 
             for row in rows:
-                if row[0] == table_name:
+                if row[2] == table_name:
                     return True
         except:
             traceback.print_exc()
@@ -198,7 +209,13 @@ class MySQLPersist(SqlPersist):
         else:
             return CREATE_TABLE_TEMPLATE 
 
-    def create_table(self, sql, conn):
+    def alter_table_template(self):
+        return ALTER_TABLE_TEMPLATE 
+
+    def delete_table_template(self):
+        return DROP_TABLE_TEMPLATE 
+
+    def alter_table(self, sql, conn):
         cursor = None
         try:
             cursor = self.__create_cursor(conn)
@@ -218,8 +235,11 @@ class MySQLPersist(SqlPersist):
     def update_template(self):
         return UPDATE_TEMPLATE
 
-    def delete_template(self):
-        return DELETE_TEMPLATE
+    def delete_template(self, where_filters):
+        if where_filters:
+            return DELETE_TEMPLATE_WITH_WHERE
+        else:
+            return DELETE_TEMPLATE
 
     def convert_value_to_db(self, field, value):
         if field.datatype == Datatypes.BOOL:
@@ -256,7 +276,7 @@ class MySQLPersist(SqlPersist):
     def sql_type(self, datatype, valuetype, primary_key=False):
         if primary_key and datatype == Datatypes.STRING:
             return "VARCHAR(100)"
-        elif valuetype == ValueTypes.SINGLE:
+        elif valuetype:
             return SQL_TYPE_MAP[datatype]
         else:
             return "TEXT"

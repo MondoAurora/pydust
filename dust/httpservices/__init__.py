@@ -57,3 +57,6 @@ class RequestWrapper():
 
     def remote_addr(self):
         pass
+
+    def get_headers(self):
+        pass

@@ -65,6 +65,14 @@ class MetaProps(Enum):
     @property
     def id_value(self):
         return self.value[3]
+    
+    def to_json(self):
+        return {
+            "datatype": self.datatype.name,
+            "valuetype": self.valuetype.name,
+            "order_value": self.order_value,
+            "id_value": self.id_value
+        }
 
 class FieldProps(Enum):
     @property
