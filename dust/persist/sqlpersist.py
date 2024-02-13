@@ -143,7 +143,7 @@ class SqlPersist():
     def update_template(self):
         pass
 
-    def delete_template(self, where_filters):
+    def delete_template(self, where_filters=None):
         pass
 
     def convert_value_to_db(self, field, value):
@@ -454,11 +454,11 @@ class SqlPersist():
 
         if meta_type == EntityTypes.unit:
             if e.access(Operation.GET, None, UnitMeta.name) in protected_unit_names:
-                print(f"Protected unit, not updating: {e.unit.access(Operation.GET, None, UnitMeta.name)}")
+                #print(f"Protected unit, not updating: {e.unit.access(Operation.GET, None, UnitMeta.name)}")
                 return True
         elif meta_type in [EntityTypes.meta_field, EntityTypes.type_meta]:
             if e.unit.access(Operation.GET, None, UnitMeta.name) in protected_unit_names:
-                print(f"Protected {meta_type} in unit {e.unit.access(Operation.GET, None, UnitMeta.name)}. Not updating!")
+                #print(f"Protected {meta_type} in unit {e.unit.access(Operation.GET, None, UnitMeta.name)}. Not updating!")
                 return True
 
         return False
@@ -484,7 +484,7 @@ class SqlPersist():
                     cnt += 1
                 
                 if cnt % UPDATE_BATCH == 0:
-                    print("Update: {}".format(cnt))
+                    #print("Update: {}".format(cnt))
                     if return_value and delete_map:
                         return_value = self.__update_entity_values(conn, delete_map, "delete", committed_entities)
                         delete_map.clear()
@@ -496,7 +496,7 @@ class SqlPersist():
                     cnt = 0
 
             if return_value and ( update_map or delete_map ):
-                print("Update: {}".format(cnt))
+                #print("Update: {}".format(cnt))
                 if return_value and delete_map:
                     return_value = self.__update_entity_values(conn, delete_map, "delete", committed_entities)
                     delete_map.clear()

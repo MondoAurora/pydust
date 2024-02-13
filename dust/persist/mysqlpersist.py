@@ -235,7 +235,7 @@ class MySQLPersist(SqlPersist):
     def update_template(self):
         return UPDATE_TEMPLATE
 
-    def delete_template(self, where_filters):
+    def delete_template(self, where_filters=None):
         if where_filters:
             return DELETE_TEMPLATE_WITH_WHERE
         else:
