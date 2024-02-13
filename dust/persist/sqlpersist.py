@@ -698,8 +698,8 @@ class SqlPersist():
                         try:
                             meta_field = unit_meta.fields_enum[field[0][1:]]
                             sql_type = self.sql_type(meta_field.datatype, meta_field.valuetype, primary_key)
-                            # Only existing fields get here, so if data type is changing or ValueType.SINGLE -> [ValueTypes.LIST, ValueTypes.SET] is possible
-                            if sql_type.lower() != field[1].lower() or meta_field.valuetype in [ValueTypes.LIST, ValueTypes.SET]:
+                            # Only existing fields get here, so if data type is changing or ValueType.SINGLE -> [ValueTypes.LIST, ValueTypes.SET] is possible, except if it is a JSON field
+                            if sql_type.lower() != field[1].lower() or (meta_field.valuetype in [ValueTypes.LIST, ValueTypes.SET] and meta_field.datatype != Datatypes.JSON) :
                                 if meta_field.valuetype == ValueTypes.SINGLE:
                                     table_specs["field_alterations"].append({"operation": "CHANGE_DATATYPE", "field_name": field[0], "global_field_name": global_field_name, "field_enum": meta_field.to_json()})
                                 else:
