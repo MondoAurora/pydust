@@ -452,11 +452,7 @@ class SqlPersist():
             for type_initiated_meta_type in type_initiated:
                 protected_unit_names.add(type_initiated_meta_type.unit_name)
 
-        if meta_type == EntityTypes.unit:
-            if e.access(Operation.GET, None, UnitMeta.name) in protected_unit_names:
-                #print(f"Protected unit, not updating: {e.unit.access(Operation.GET, None, UnitMeta.name)}")
-                return True
-        elif meta_type in [EntityTypes.meta_field, EntityTypes.type_meta]:
+        if meta_type in [EntityTypes.meta_field, EntityTypes.type_meta]:
             if e.unit.access(Operation.GET, None, UnitMeta.name) in protected_unit_names:
                 #print(f"Protected {meta_type} in unit {e.unit.access(Operation.GET, None, UnitMeta.name)}. Not updating!")
                 return True
