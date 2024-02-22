@@ -14,6 +14,7 @@ _sql_persister = None
 _types_initiated = set()
 
 UPDATE_BATCH = 500000
+DEFAULT_MAX_PACKET_SIZE = 1 * 1024 * 1024
 
 def init_sql_persist(unit_name, persist_class, meta_type_enums, deps_func):
     global _sql_persister
@@ -806,10 +807,12 @@ class SqlPersist():
             c = self._create_cursor(conn, buffered=False)
 
             try:
-                max_packet_size = int(os.environ.get("MYSQL_MAX_ALLOWED_PACKET_SIZE", 16 * 1024 * 1024))
+                max_packet_size = int(os.environ.get("MYSQL_MAX_ALLOWED_PACKET_SIZE", DEFAULT_MAX_PACKET_SIZE))
+                if max_packet_size > DEFAULT_MAX_PACKET_SIZE:
+                    max_packet_size = DEFAULT_MAX_PACKET_SIZE
             except:
-                max_packet_size = 16 * 1024 * 1024
-            
+                max_packet_size = DEFAULT_MAX_PACKET_SIZE
+
             mysql_version = ""
 
             c.execute("SHOW VARIABLES LIKE 'version'")
@@ -875,7 +878,7 @@ class SqlPersist():
                 c.execute("SELECT {} FROM `{}`;".format(",".join(f[0] for f in fields), table))
                 row = c.fetchone()
 
-                row_index = 0
+                row_counter = 0
                 packet_length  = 0
 
                 empty_table = True
@@ -912,7 +915,8 @@ class SqlPersist():
                     row_stream.write(")")
 
                     row_str = row_stream.getvalue()
-                    if packet_length + len(row_str) > max_packet_size:
+                    if packet_length + len(row_str) > max_packet_size or row_counter > 900:
+                        row_counter = 0
                         stream.write(";\n")
                         insert_str = "INSERT INTO `{}` ({}) VALUES ".format(table, ",".join(f[1] for f in fields))
                         packet_length = len(insert_str)
@@ -925,7 +929,7 @@ class SqlPersist():
                     first_row = False
 
                     row = c.fetchone()
-                    row_index += 1
+                    row_counter += 1
 
                 if not empty_table:
                     stream.write(";\n")
