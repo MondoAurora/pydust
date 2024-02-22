@@ -671,7 +671,7 @@ class SqlPersist():
                     table_specs["multivalue_table"] = _multivalue_table
 
             table_specs = ALL_TABLES[sql_table.table_name]
-            
+
         except:
             # Table does not exist
             table_exists = False
@@ -710,7 +710,7 @@ class SqlPersist():
                         global_field_name = f"{unit_meta.unit_name}:{unit_meta.name}:{meta_field.name}"
                         sql_type = self.sql_type(meta_field.datatype, meta_field.valuetype, primary_key)
                         table_specs["field_alterations"].append({"operation": "ADD", "field_name": f"_{meta_field.name}", "global_field_name": global_field_name, "field_enum": meta_field.to_json()})
-        else:
+        elif field_enum is not None:
             global_field_name = f"{unit_meta.unit_name}:{unit_meta.name}:{field_enum.name}"
             sql_type = self.sql_type(field_enum.datatype, field_enum.valuetype, False)
             table_specs["table_alterations"].append({"operation": "CREATE_MULTIVALUE_TABLE", "field_name": f"_{field_enum.name}", "global_field_name": global_field_name, "field_enum": field_enum.to_json()})
@@ -859,7 +859,7 @@ class SqlPersist():
                          f"-- Dumping data for table `{table}`\n"+
                          "--\n\n"+
                          f"LOCK TABLES `{table}` WRITE;\n"+
-                         f"/*!40000 ALTER TABLE `entity_meta_field` DISABLE KEYS */;\n")
+                         f"/*!40000 ALTER TABLE `{table}` DISABLE KEYS */;\n")
 
                 # Get fields:
                 c.execute("DESCRIBE `" + str(table) + "`;")
