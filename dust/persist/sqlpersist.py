@@ -13,8 +13,9 @@ from dust.events import FORMAT_DB_DATETIME
 _sql_persister = None
 _types_initiated = set()
 
-UPDATE_BATCH = 500000
-DEFAULT_MAX_PACKET_SIZE = 1 * 1024 * 1024
+DB_UPDATE_BATCH = int(os.environ.get("DB_UPDATE_BATCH", 1000))
+DELAY_IN_SEC_AFTER_UPDATE = float(os.environ.get("DELAY_IN_SEC_AFTER_UPDATE", 0.0))
+DEFAULT_MAX_PACKET_SIZE = 4 * 1024 * 1024
 
 def init_sql_persist(unit_name, persist_class, meta_type_enums, deps_func):
     global _sql_persister
@@ -480,7 +481,7 @@ class SqlPersist():
                     self.__prepare_update_entity(e, update_map, delete_map)
                     cnt += 1
                 
-                if cnt % UPDATE_BATCH == 0:
+                if cnt % DB_UPDATE_BATCH == 0:
                     #print("Update: {}".format(cnt))
                     if return_value and delete_map:
                         return_value = self.__update_entity_values(conn, delete_map, "delete", committed_entities)
@@ -512,7 +513,7 @@ class SqlPersist():
                     self.__prepare_insert_entity(e, insert_map)
                     cnt += 1
 
-                if return_value and insert_map and cnt % UPDATE_BATCH == 0:
+                if return_value and insert_map and cnt % DB_UPDATE_BATCH == 0:
                     print("Insert: {}".format(cnt))
                     return_value = self.__update_entity_values(conn, insert_map, "insert", committed_entities)
                     insert_map.clear()
@@ -561,6 +562,8 @@ class SqlPersist():
                     c.execute(sql, values)
                     if entity:
                         committed_entities.append(entity)
+                    if DELAY_IN_SEC_AFTER_UPDATE > 0.0001:
+                        time.sleep(DELAY_IN_SEC_AFTER_UPDATE)                    
                 end = time.time()
                 print("Finished executing in {}".format(end-start))
 
@@ -808,8 +811,6 @@ class SqlPersist():
 
             try:
                 max_packet_size = int(os.environ.get("MYSQL_MAX_ALLOWED_PACKET_SIZE", DEFAULT_MAX_PACKET_SIZE))
-                if max_packet_size > DEFAULT_MAX_PACKET_SIZE:
-                    max_packet_size = DEFAULT_MAX_PACKET_SIZE
             except:
                 max_packet_size = DEFAULT_MAX_PACKET_SIZE
 
@@ -878,7 +879,7 @@ class SqlPersist():
                 c.execute("SELECT {} FROM `{}`;".format(",".join(f[0] for f in fields), table))
                 row = c.fetchone()
 
-                row_counter = 0
+                row_index = 0
                 packet_length  = 0
 
                 empty_table = True
@@ -915,8 +916,7 @@ class SqlPersist():
                     row_stream.write(")")
 
                     row_str = row_stream.getvalue()
-                    if packet_length + len(row_str) > max_packet_size or row_counter > 900:
-                        row_counter = 0
+                    if packet_length + len(row_str) > max_packet_size:
                         stream.write(";\n")
                         insert_str = "INSERT INTO `{}` ({}) VALUES ".format(table, ",".join(f[1] for f in fields))
                         packet_length = len(insert_str)
@@ -929,7 +929,7 @@ class SqlPersist():
                     first_row = False
 
                     row = c.fetchone()
-                    row_counter += 1
+                    row_index += 1
 
                 if not empty_table:
                     stream.write(";\n")
