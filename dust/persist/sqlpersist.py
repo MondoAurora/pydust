@@ -21,7 +21,7 @@ class TrxState:
     rollbackstarted = 3
     rollbackfinished = 4
 
-DB_UPDATE_BATCH = int(os.environ.get("DB_UPDATE_BATCH", 1000))
+DB_UPDATE_BATCH = int(os.environ.get("DB_UPDATE_BATCH", 50000))
 DELAY_IN_SEC_AFTER_UPDATE = float(os.environ.get("DELAY_IN_SEC_AFTER_UPDATE", 0.0))
 DEFAULT_MAX_PACKET_SIZE = 4 * 1024 * 1024
 
@@ -502,7 +502,7 @@ class SqlPersist():
                     self.__prepare_update_entity(e, update_map, delete_map)
                     cnt += 1
                 
-                if cnt % UPDATE_BATCH == 0:
+                if cnt % DB_UPDATE_BATCH == 0:
                     #print("Update: {}".format(cnt))
                     if return_value and delete_map:
                         return_value = self.__update_entity_values(conn, delete_map, "delete", committed_entities)
@@ -534,7 +534,7 @@ class SqlPersist():
                     self.__prepare_insert_entity(e, insert_map)
                     cnt += 1
 
-                if return_value and insert_map and cnt % UPDATE_BATCH == 0:
+                if return_value and insert_map and cnt % DB_UPDATE_BATCH == 0:
                     print("Insert: {}".format(cnt))
                     return_value = self.__update_entity_values(conn, insert_map, "insert", committed_entities)
                     insert_map.clear()
