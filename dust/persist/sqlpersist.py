@@ -1,4 +1,5 @@
 from jinja2 import Template
+from enum import Enum
 import traceback
 import json
 import time
@@ -13,7 +14,16 @@ from dust.events import FORMAT_DB_DATETIME
 _sql_persister = None
 _types_initiated = set()
 
-UPDATE_BATCH = 500000
+class TrxState:
+    execute = 0
+    commitstarted = 1
+    commitfinished = 2
+    rollbackstarted = 3
+    rollbackfinished = 4
+
+DB_UPDATE_BATCH = int(os.environ.get("DB_UPDATE_BATCH", 1000))
+DELAY_IN_SEC_AFTER_UPDATE = float(os.environ.get("DELAY_IN_SEC_AFTER_UPDATE", 0.0))
+DEFAULT_MAX_PACKET_SIZE = 4 * 1024 * 1024
 
 def init_sql_persist(unit_name, persist_class, meta_type_enums, deps_func):
     global _sql_persister
@@ -69,13 +79,13 @@ def load_unit_type(unit_meta_type, where_filters=None, load_referenced=False, en
     global _sql_persister
     return _sql_persister.load_type(unit_meta_type, where_filters=where_filters, load_referenced=load_referenced, entity_filter_method=entity_filter_method)    
 
-def load_entity_ids_for_type(unit_meta_type):
+def load_entity_ids_for_type(unit_meta_type, where_filters=None):
     global _sql_persister
-    return _sql_persister.load_entity_ids_for_type(unit_meta_type)    
+    return _sql_persister.load_entity_ids_for_type(unit_meta_type, where_filters=where_filters)    
 
-def persist_entities(entities):
+def persist_entities(entities, trx_state_callback=None):
     global _sql_persister
-    _sql_persister.persist_entities(entities)   
+    _sql_persister.persist_entities(entities, trx_state_callback)   
 
 def  dump_database(stream):
     global _sql_persister
@@ -459,7 +469,7 @@ class SqlPersist():
 
         return False
 
-    def persist_entities(self, entities):
+    def persist_entities(self, entities, trx_state_callback=None):
         conn = None
         cnt = 0
         return_value = True
@@ -468,6 +478,19 @@ class SqlPersist():
             print("Persist {} entities".format(len(entities)))
             conn = self._create_connection()
             conn.autocommit = False
+
+            thread_id = None
+            if trx_state_callback:
+                c = None
+                try:
+                    c = self._create_cursor(conn, prepared=False, buffered=False)
+                    c.execute("SELECT CONNECTION_ID();")
+                    thread_id = c.fetchone()[0]
+                    print(f"CONNECTION ID is {thread_id}")
+                    trx_state_callback(thread_id, TrxState.execute)
+                finally:
+                    if c is not None:
+                        c.close()
 
             update_map = {}
             delete_map = {}
@@ -529,16 +552,28 @@ class SqlPersist():
 
 
             if return_value:
+                if thread_id:
+                    trx_state_callback(thread_id, TrxState.commitstarted)
                 conn.commit()
+                if thread_id:
+                    trx_state_callback(thread_id, TrxState.commitfinished)
                 print("Committing {} entities".format(len(committed_entities)))
                 for e in committed_entities:
                     e.set_committed()
             else:
+                if thread_id:
+                    trx_state_callback(thread_id, TrxState.rollbackstarted)
                 conn.rollback()
+                if thread_id:
+                    trx_state_callback(thread_id, TrxState.rollbackfinished)
 
         except:
             traceback.print_exc()
+            if thread_id:
+                trx_state_callback(thread_id, TrxState.rollbackstarted)
             conn.rollback()
+            if thread_id:
+                trx_state_callback(thread_id, TrxState.rollbackfinished)
             return_value = False
         finally:
             self._close_connection(conn)
