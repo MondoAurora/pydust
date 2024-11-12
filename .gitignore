@@ -3,3 +3,5 @@ PyDust.egg-info
 __pycache__
 dist
 .DS_Store
+test/*
+test

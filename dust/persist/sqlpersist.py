@@ -595,6 +595,8 @@ class SqlPersist():
                     c.execute(sql, values)
                     if entity:
                         committed_entities.append(entity)
+                    if DELAY_IN_SEC_AFTER_UPDATE > 0.0001:
+                        time.sleep(DELAY_IN_SEC_AFTER_UPDATE)                    
                 end = time.time()
                 print("Finished executing in {}".format(end-start))
 
@@ -706,7 +708,7 @@ class SqlPersist():
                     table_specs["multivalue_table"] = _multivalue_table
 
             table_specs = ALL_TABLES[sql_table.table_name]
-            
+
         except:
             # Table does not exist
             table_exists = False
@@ -745,7 +747,7 @@ class SqlPersist():
                         global_field_name = f"{unit_meta.unit_name}:{unit_meta.name}:{meta_field.name}"
                         sql_type = self.sql_type(meta_field.datatype, meta_field.valuetype, primary_key)
                         table_specs["field_alterations"].append({"operation": "ADD", "field_name": f"_{meta_field.name}", "global_field_name": global_field_name, "field_enum": meta_field.to_json()})
-        else:
+        elif field_enum is not None:
             global_field_name = f"{unit_meta.unit_name}:{unit_meta.name}:{field_enum.name}"
             sql_type = self.sql_type(field_enum.datatype, field_enum.valuetype, False)
             table_specs["table_alterations"].append({"operation": "CREATE_MULTIVALUE_TABLE", "field_name": f"_{field_enum.name}", "global_field_name": global_field_name, "field_enum": field_enum.to_json()})
@@ -841,10 +843,10 @@ class SqlPersist():
             c = self._create_cursor(conn, buffered=False)
 
             try:
-                max_packet_size = int(os.environ.get("MYSQL_MAX_ALLOWED_PACKET_SIZE", 16 * 1024 * 1024))
+                max_packet_size = int(os.environ.get("MYSQL_MAX_ALLOWED_PACKET_SIZE", DEFAULT_MAX_PACKET_SIZE))
             except:
-                max_packet_size = 16 * 1024 * 1024
-            
+                max_packet_size = DEFAULT_MAX_PACKET_SIZE
+
             mysql_version = ""
 
             c.execute("SHOW VARIABLES LIKE 'version'")
@@ -894,7 +896,7 @@ class SqlPersist():
                          f"-- Dumping data for table `{table}`\n"+
                          "--\n\n"+
                          f"LOCK TABLES `{table}` WRITE;\n"+
-                         f"/*!40000 ALTER TABLE `entity_meta_field` DISABLE KEYS */;\n")
+                         f"/*!40000 ALTER TABLE `{table}` DISABLE KEYS */;\n")
 
                 # Get fields:
                 c.execute("DESCRIBE `" + str(table) + "`;")
