@@ -26,7 +26,6 @@ class SortOrder(Enum):
     DESCENDING = "desc"
 
 class DustStatCubeType(Enum):
-    NUMERIC = "numeric"
     STRUCTURED = "structured"
 
 class DustStatAxis(ABC):
@@ -266,11 +265,7 @@ class DustStatDataCube(ABC):
         axes = [DustStatAxisConst.from_dict(axis_data) for axis_data in data["axes"]]
         cube_type = DustStatCubeType(data["type"])
         
-        # Determine the type of cube to instantiate
-        if cube_type == DustStatCubeType.NUMERIC:
-            cube = DustStatDataCubeNumeric(data["name"], axes)
-        else:
-            cube = DustStatDataCubeStructured(data["name"], axes)
+        cube = DustStatDataCubeStructured(data["name"], axes)
 
         # Convert list keys back to tuples
         cube.values = {tuple(json.loads(key)): value for key, value in data["values"].items()}
@@ -304,9 +299,17 @@ class DustStatDataCube(ABC):
         }, sort_keys=False, default_style=None)
 
     @staticmethod
-    def from_yaml(yaml_str: str) -> "DustStatDataCube":
+    def from_yaml(yaml_str: str, safe_load: bool = True) -> "DustStatDataCube":
         """Deserializes a data cube from a YAML string, restoring category names safely."""
-        data = yaml.safe_load(yaml_str)
+        if safe_load:
+            data = yaml.safe_load(yaml_str)
+        else:
+            try:
+                from yaml import CLoader as Loader
+            except ImportError:
+                from yaml import SafeLoader as Loader  # fallback
+
+            data = yaml.load(yaml_str, Loader=Loader)
 
         # Rebuild axes from YAML (handling {cat, value} format)
         axes = [
@@ -322,11 +325,7 @@ class DustStatDataCube(ABC):
 
         # Determine cube type
         cube_type = DustStatCubeType(data["type"])
-        cube = (
-            DustStatDataCubeNumeric(data["name"], axes)
-            if cube_type == DustStatCubeType.NUMERIC
-            else DustStatDataCubeStructured(data["name"], axes)
-        )
+        cube = DustStatDataCubeStructured(data["name"], axes)
 
         # Convert category names back to index-based storage
         for entry in data["values"]:
@@ -344,107 +343,6 @@ class DustStatDataCube(ABC):
         return cube
 
 
-class DustStatDataCubeNumeric(DustStatDataCube):
-    """Data cube that stores and sums numeric values."""
-
-    def __init__(self, name: str, axes: List[DustStatAxisConst]):
-        super().__init__(name, axes, DustStatCubeType.NUMERIC)
-
-    def aggregate(
-        self,
-        operation: AggregationOperation,
-        filters: Optional[Dict[str, List[str]]] = None,
-        filter_fn: Optional[Callable[[Tuple[str, ...]], bool]] = None
-    ) -> float:
-        """
-        Performs aggregation (sum, avg, min, max) with optional filtering.
-
-        Args:
-            operation (AggregationOperation): The aggregation operation ("sum", "avg", "min", "max").
-            filters (Optional[Dict[str, List[str]]]): A dictionary specifying axes and the categories to include.
-            filter_fn (Optional[Callable[[Tuple[str, ...]], bool]]): A custom function to filter coordinates.
-
-        Returns:
-            float: The aggregated result.
-
-        Raises:
-            ValueError: If an invalid aggregation operation is given.
-        """
-        # Precompute axis indices for faster lookups (avoids recomputing them inside the loop)
-        axis_indices = {axis.name: i for i, axis in enumerate(self._axes)}
-
-        selected_values = [
-            value for coords, value in self.values.items()  # Iterate over all stored values
-            if (
-                # Check if filters exist and apply them
-                (not filters or all(
-                    coords[axis_indices[axis_name]] in allowed_categories  # Check if the coordinate matches allowed categories
-                    for axis_name, allowed_categories in filters.items()  # Iterate over all filters
-                    if axis_name in axis_indices  # Ensure the axis exists in the cube before accessing its index
-                ))
-                and (not filter_fn or filter_fn(coords))  # Apply custom filter function (if provided)
-            )
-        ]
-
-        # Return aggregated result
-        if not selected_values:
-            return None  # Return None if no matching data
-
-        match operation:
-            case AggregationOperation.SUM:
-                return sum(selected_values)
-            case AggregationOperation.AVG:
-                return sum(selected_values) / len(selected_values)
-            case AggregationOperation.MIN:
-                return min(selected_values)
-            case AggregationOperation.MAX:
-                return max(selected_values)
-            case _:
-                raise ValueError(f"Unknown aggregation operation: {operation}")
-
-    class Cursor:
-        """Cursor for setting and retrieving values from a numeric data cube."""
-
-        def __init__(self, cube: "DustStatDataCubeNumeric"):
-            self.cube = cube
-            self.coords: List[Optional[str]] = [None] * len(cube.axes())
-
-        def __get_index_tuple(self) -> Tuple[int, ...]:
-            return tuple(
-                axis.get_index(self.coords[i]) if self.coords[i] is not None else -1
-                for i, axis in enumerate(self.cube.axes())
-            )
-
-        def set_coordinate(self, category: str, axis: DustStatAxisConst) -> None:
-            """Sets a coordinate value for a given axis, dynamically adding new categories if needed."""
-            axis.add_category(category)
-            idx_axis = self.cube.axes().index(axis)
-            self.coords[idx_axis] = category
-
-        def clear_coordinates(self) -> None:
-            """Resets the cursor position."""
-            self.coords = [None] * len(self.cube.axes())
-
-        def value(self) -> Optional[float]:
-            """Retrieves the value at the current location."""
-            return self.cube.values.get(self.__get_index_tuple(), 0)
-
-        def set_value(self, value: float) -> None:
-            """Sets a numeric value at the current location."""
-            self.cube.values[self.__get_index_tuple()] = value
-
-        def increment_value_with(self, value: float) -> None:
-            """Increments the numeric value at the current location."""
-            current_value = self.value() or 0
-            self.set_value(current_value + value)
-
-        def has_value(self) -> bool:
-            """Returns True if a value has been set at the current cursor location (excluding explicit None)."""
-            index_tuple = self.__get_index_tuple()
-            return index_tuple in self.cube.values and self.cube.values[index_tuple] is not None
-
-
-
 class DustStatDataCubeStructured(DustStatDataCube):
     """Data cube that stores structured (dictionary) values."""
 
@@ -455,25 +353,92 @@ class DustStatDataCubeStructured(DustStatDataCube):
         self,
         axis_order: Optional[List[str]] = None,
         sort_order: Optional[Dict[str, SortOrder]] = None,
-        filters: Optional[Dict[str, List[str]]] = None,
-        filter_fn: Optional[Callable[[Tuple[str, ...]], bool]] = None,
-        value_filter: Optional[Callable[[Dict], bool]] = None,
-        callback: Optional[Callable[[Tuple[str, ...], Dict], None]] = None
+        filters: Optional[Dict[str, List[str]]] = None
+    ) -> Generator[Tuple[Tuple[str, ...], Dict], None, None]:
+
+        axis_name_to_index = {axis.name: i for i, axis in enumerate(self._axes)}
+
+        # Normalize axis order
+        if axis_order:
+            ordered_axes = [next(axis for axis in self._axes if axis.name == name) for name in axis_order]
+            for axis in self._axes:
+                if axis not in ordered_axes:
+                    ordered_axes.append(axis)
+        else:
+            ordered_axes = self._axes
+
+        ordered_axis_names = [axis.name for axis in ordered_axes]
+
+        # Build logical coord tuples reordered to axis_order
+        coord_map = []
+        for index_coords in self.values.keys():
+            logical_coords = tuple(axis.categories()[idx] for axis, idx in zip(self._axes, index_coords))
+
+            # Apply axis/category filters
+            if filters:
+                skip = False
+                for axis_name, allowed in filters.items():
+                    if allowed is None:
+                        continue
+                    pos = axis_name_to_index[axis_name]
+                    if logical_coords[pos] not in allowed:
+                        skip = True
+                        break
+                if skip:
+                    # Skip coord if filter did not allow
+                    continue
+
+            reordered_coords = tuple(logical_coords[axis_name_to_index[axis_name]] for axis_name in ordered_axis_names)
+            coord_map.append((reordered_coords, logical_coords, index_coords))
+
+        # Sort if sort_order is provided
+        if sort_order:
+            def coord_sort_key(reordered_coord):
+                key = []
+                for i, axis_name in enumerate(ordered_axis_names):
+                    value = reordered_coord[i]
+                    order = sort_order.get(axis_name, SortOrder.ASCENDING)
+
+                    # Reverse value by inverting characters for DESC string sort
+                    if order == SortOrder.DESCENDING:
+                        value = ''.join(chr(255 - ord(c)) for c in value)
+
+                    key.append(value)
+                return key
+
+            coord_map.sort(key=lambda x: coord_sort_key(x[0]))
+
+        # Yield original logical coords and values
+        for _, logical_coords, index_coords in coord_map:
+            yield logical_coords, self.values[index_coords]
+
+    def visit_old(
+        self,
+        axis_order: Optional[List[str]] = None,
+        sort_order: Optional[Dict[str, SortOrder]] = None,
+        filters: Optional[Dict[str, List[str]]] = None
     ) -> Generator[Tuple[Tuple[str, ...], Dict], None, None]:
         """
-        Iterates over the structured cube's data locations in a flexible way.
-
-        Args:
-            axis_order (Optional[List[str]]): Order in which axes should be visited.
-            sort_order (Optional[Dict[str, SortOrder]]): Sorting preference per axis.
-            filters (Optional[Dict[str, List[str]]]): Filter categories per axis.
-            filter_fn (Optional[Callable[[Tuple[str, ...]], bool]]): Custom filter for coordinates.
-            value_filter (Optional[Callable[[Dict], bool]]): Custom filter for data values.
-            callback (Optional[Callable[[Tuple[str, ...], Dict], None]]): Function to process each entry.
-
-        Yields:
-            Generator[Tuple[Tuple[str, ...], Dict]]: Coordinates and values that match the filters.
+        Efficient two-pass visit: filters coords, sorts them, then yields in order.
         """
+
+        def coord_sort_key(coord):
+            # Build coord reordered to match ordered_axes
+            reordered = [coord[axis_position_map[axis.name]] for axis in ordered_axes]
+
+            key = []
+            for i, axis in enumerate(ordered_axes):
+                value = reordered[i]
+                direction = axis_sort_preferences[axis.name]
+                if direction == SortOrder.DESCENDING:
+                    key.append((False, value))  # Reverse sort
+                elif direction == SortOrder.ASCENDING:
+                    key.append((True, value))   # Normal sort
+                else:
+                    key.append((None, axis.categories().index(value)))  # Keep declared order
+            return key
+
+        axis_position_map = {axis.name: i for i, axis in enumerate(self._axes)}
 
         # Determine axis order (default: cube's natural order)
         if axis_order:
@@ -482,54 +447,45 @@ class DustStatDataCubeStructured(DustStatDataCube):
         else:
             ordered_axes = self._axes[:]  # Use natural order if no custom order is provided
 
-        # Sorting function for categories within an axis
-        def get_sorted_categories(axis: DustStatAxisConst):
-            categories = axis.categories()
-            
-            order = sort_order[axis.name] if sort_order and axis.name in sort_order else SortOrder.ASCENDING
-            is_descending = order == SortOrder.DESCENDING
+        # Precompute the sorting direction per axis
+        axis_sort_preferences = {
+            axis.name: sort_order[axis.name]
+            if sort_order and axis.name in sort_order
+            else None  # None means preserve category order
+            for axis in ordered_axes
+        }
 
-            return sorted(categories, reverse=is_descending)
+        # Pass 1: Filter and collect logical coordinates
+        filtered_coords = []
 
-        # Map the ordered axes to their positions in the original cube
-        axis_position_map = {axis.name: i for i, axis in enumerate(self._axes)}
+        for index_coords in self.values:
+            logical_coords = tuple(
+                axis.categories()[idx] for axis, idx in zip(self._axes, index_coords)
+            )
 
-        def traverse(coords: List[str], remaining_axes: List[DustStatAxisConst]):
-            if not remaining_axes:  # Base case: all axes set
-                # Reconstruct coordinate tuple in the cube's natural axis order
-                reordered_coords = [None] * len(self._axes)
-                for i, axis in enumerate(ordered_axes):
-                    reordered_coords[axis_position_map[axis.name]] = coords[i]
-
-                coord_tuple = tuple(reordered_coords)  # Ensure correct order for lookup
-                value = self.values.get(coord_tuple)  # Lookup in self.values with correct order
-
-                # Apply value filter (if provided)
-                if value_filter and (value is None or not value_filter(value)):
-                    return
-
-                # Apply coordinate filters
-                if filter_fn and not filter_fn(coord_tuple):
-                    return
-
-                if callback:
-                    callback(coord_tuple, value)
-
-                yield coord_tuple, value
-                return
-
-            # Process the next axis in the specified order
-            next_axis = remaining_axes[0]
-            for category in get_sorted_categories(next_axis):
-                # Apply category filters
-                if filters and next_axis.name in filters and category not in filters[next_axis.name]:
+            # Apply axis/category filters
+            if filters:
+                skip = False
+                for axis_name, allowed in filters.items():
+                    if allowed is None:
+                        continue  # No filtering for this axis
+                    pos = axis_position_map[axis_name]
+                    if logical_coords[pos] not in allowed:
+                        skip = True
+                        break
+                if skip:
                     continue
 
-                yield from traverse(coords + [category], remaining_axes[1:])
+            filtered_coords.append(logical_coords)
 
-        # Start traversal
-        yield from traverse([], ordered_axes)
+        filtered_coords.sort(key=coord_sort_key)
 
+        # Yield in sorted order
+        for logical_coords in filtered_coords:
+            index_coords = tuple(
+                axis.get_index(cat) for axis, cat in zip(self._axes, logical_coords)
+            )
+            yield logical_coords, self.values[index_coords]
 
     class Cursor:
         """Cursor for setting and retrieving structured values from a data cube."""
