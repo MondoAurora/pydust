@@ -1,213 +1,172 @@
-# **DustStat DataCube**
-A flexible **n-dimensional data cube** implementation in Python for **storing, modifying, iterating, and aggregating** structured and numeric data.
+# **DustStat DataCube & ChartUI**
 
-### **Key Features**
-- **Fixed & dynamic category-based axes** (categories expand automatically).  
-- **Supports numeric & structured (dictionary) data storage.**  
-- **Aggregation with flexible filtering (by axis, categories, or custom function).**  
-- **Cursor-based access for efficient data updates & retrieval.**  
-- **Data iteration with sorting, filtering, and callbacks (`visit()`).**  
-- **Serialization & deserialization (`to_dict`, `from_dict`).**  
+A flexible system for **structured, multidimensional data analysis and visualization** using custom-built data cubes and chart generation logic. Tailored for developers who need to collect, structure, and display rich metrics in a way that’s easy to serialize, iterate, and visualize.
 
 ---
 
-## 🛠 **Main Components**
-### **1️⃣ DustStatAxisConst**  
-Defines an **axis** in the data cube. Axes automatically expand as new categories are added via `set_coordinate()`.  
+## 🧱 `datacube.py` – Structured N-Dimensional Data Cubes
 
-```python
-from dust.datacube.datacube import DustStatAxisConst
-
-axis = DustStatAxisConst("Department")
-print(axis.categories())  # Output: []
-```
+The `datacube.py` module provides:
+- An extensible system for defining **axes** (dimensions) and their **categories**
+- Tools for creating cubes with structured or numeric values
+- Built-in support for **iteration**, **sorting**, **filtering**, and **category metadata**
+- A `visit()` method that allows fine-grained data access
 
 ---
 
-### **2️⃣ DustStatDataCubeNumeric (For Numeric Data)**
-- Stores **integer/float** values.  
-- Supports **summation, incremental updates, and aggregation**.  
+### ✅ Example: Tracking Time Off
 
-#### **Example: Storing Employee Salaries by Department and Year**
+Use a cube to track different types of employee absences over time.
+
 ```python
-from dust.datacube.datacube import DustStatDataCubeNumeric, DustStatAxisConst
+from datacube import DustStatDataCubeStructured, DustStatAxisConst
 
-# Define axes
-cube = DustStatDataCubeNumeric("Salaries", [
+cube = DustStatDataCubeStructured("TimeOff", [
+    DustStatAxisConst("Employee"),
     DustStatAxisConst("Year"),
-    DustStatAxisConst("Department")
+    DustStatAxisConst("Type")
 ])
 
-cursor = cube.Cursor(cube)
+cursor = DustStatDataCubeStructured.Cursor(cube)
 
-# Set salary data
-cursor.set_coordinate("2023", cube.get_axis_by_name("Year"))
-cursor.set_coordinate("HR", cube.get_axis_by_name("Department"))
-cursor.set_value(50000)
-
-cursor.set_coordinate("2023", cube.get_axis_by_name("Year"))
-cursor.set_coordinate("IT", cube.get_axis_by_name("Department"))
-cursor.set_value(70000)
-
+# Populate cube with structured values
+cursor.set_coordinate("Alice", cube.get_axis_by_name("Employee"))
 cursor.set_coordinate("2024", cube.get_axis_by_name("Year"))
-cursor.set_coordinate("HR", cube.get_axis_by_name("Department"))
-cursor.increment_value_with(10000)  # HR department gets a raise
+cursor.set_coordinate("Vacation", cube.get_axis_by_name("Type"))
+cursor.set_value({"days": 12})
 
-# Retrieve Data
-cursor.set_coordinate("2023", cube.get_axis_by_name("HR"))
-print(cursor.value())  # Output: 50000
+cursor.set_coordinate("Alice", cube.get_axis_by_name("Type"))
+cursor.set_coordinate("Sick", cube.get_axis_by_name("Type"))
+cursor.set_value({"days": 3})
 
-# Perform Aggregation
-print(cube.aggregate(operation="sum"))  # Total salaries across all departments & years
+cursor.set_coordinate("Bob", cube.get_axis_by_name("Type"))
+cursor.set_coordinate("Training", cube.get_axis_by_name("Type"))
+cursor.set_value({"days": 5})
+
+cursor.set_coordinate("Bob", cube.get_axis_by_name("Type"))
+cursor.set_coordinate("Remote", cube.get_axis_by_name("Type"))
+cursor.set_value({"days": 20})
 ```
 
 ---
 
-### **3️⃣ DustStatDataCubeStructured (For Dictionary-Based Data)**
-- Stores **structured (dictionary) values** at each coordinate.  
-- Useful for tracking **metadata** instead of just numbers.  
+### 🔁 Visit, Sort & Filter
 
-#### **Example: Storing Employee Details**
 ```python
-from dust.datacube.datacube import DustStatDataCubeStructured, DustStatAxisConst
-
-# Define axes
-cube = DustStatDataCubeStructured("Employees", [
-    DustStatAxisConst("Year"),
-    DustStatAxisConst("Department")
-])
-
-cursor = cube.Cursor(cube)
-
-# Store structured employee data
-cursor.set_coordinate("2023", cube.get_axis_by_name("Year"))
-cursor.set_coordinate("HR", cube.get_axis_by_name("Department"))
-cursor.set_value({"employees": 10, "budget": 200000})
-
-cursor.set_coordinate("2023", cube.get_axis_by_name("IT"))
-cursor.set_coordinate("IT", cube.get_axis_by_name("Department"))
-cursor.set_value({"employees": 25, "budget": 500000})
-
-print(cursor.value())  
-# Output: {'employees': 25, 'budget': 500000}
-```
-
----
-
-## 🔍 **Aggregation & Filtering**
-The `aggregate()` function allows **powerful filtering**:
-
-1️⃣ **Filter by Axis & Categories**  
-```python
-result = cube.aggregate(
-    operation="sum",
-    filters={"Year": ["2023"], "Department": ["HR"]}
-)
-```
-- **Includes only specified categories** within selected axes.  
-- **Ignores other axes (treats them as wildcards).**  
-
-2️⃣ **Filter via Custom Function**  
-```python
-def custom_filter(coords):
-    return coords[0] == "2023" and coords[1].startswith("I")
-
-result = cube.aggregate(operation="sum", filter_fn=custom_filter)
-```
-- **More advanced filtering logic**.  
-- **Custom coordinate-based selection**.  
-
----
-
-## 🔄 **Visiting Data Locations (`visit()`)**
-The `visit()` method **allows iterating over data** in a structured way, supporting:
-- **Axis order customization** (`axis_order=["Year", "Department"]`).
-- **Sorting within axes** (`sort_order={"Year": SortOrder.DESCENDING}`).
-- **Filtering on categories or using a custom function.**
-- **Applying a callback function while iterating.**
-- **Returning a generator for memory-efficient iteration.**
-
----
-
-### **1️⃣ Basic Iteration**
-Iterate over all stored data in **natural order**.
-```python
+# Iterate in default order
 for coords, value in cube.visit():
-    print(f"{coords}: {value}")
-```
+    print(coords, value)
 
----
+# Filter only Sick leave
+for coords, value in cube.visit(filters={"Type": ["Sick"]}):
+    print("Sick leave:", coords, value)
 
-### **2️⃣ Filtering by Axis & Categories**
-```python
-for coords, value in cube.visit(filters={"Department": ["IT", "HR"]}):
-    print(f"{coords}: {value}")
-```
-- Visits **only IT and HR departments**.
-
----
-
-### **3️⃣ Sorting & Custom Axis Order**
-```python
-from dust.datacube.datacube import SortOrder
+# Order by Employee, Year, then Type
+from datacube import SortOrder
 
 for coords, value in cube.visit(
-    axis_order=["Year", "Department"],
-    sort_order={"Year": SortOrder.DESCENDING}  # Default is ASCENDING for all others
+    axis_order=["Employee", "Year", "Type"],
+    sort_order={"Employee": SortOrder.ASCENDING, "Year": SortOrder.DESCENDING, "Type": SortOrder.ASCENDING}
 ):
-    print(f"{coords}: {value}")
+    print("Sorted:", coords, value)
 ```
-- Visits **latest years first**, then departments.
-- **Unspecified axes remain in natural order**.
 
 ---
 
-### **4️⃣ Filtering via Custom Function**
+## 📊 `chartui.py` – Chart Data Generator (for Chart.js)
+
+The `chartui.py` module provides:
+- A chart type registry (`bar`, `line`, etc.)
+- Declarative configs for how data is grouped
+- Output as Chart.js-compatible JSON
+- Support for stacking, annotations, filtering, and series splitting
+
+---
+
+### ✅ Example: Days Off per Employee (Grouped by Type)
+
 ```python
-def custom_filter(coords):
-    return coords[0] == "2023" and coords[1].startswith("I")  # Year is 2023, Department starts with "I"
+from chartui import generate_chart_data
 
-for coords, value in cube.visit(filter_fn=custom_filter):
-    print(f"{coords}: {value}")
+chart_config = {
+    "type": "bar",
+    "visit": lambda cube: cube.visit(),
+    "x": lambda coords, _: coords[0],  # Employee
+    "stack_by": lambda coords, _: coords[2],  # Type (Vacation, Sick, etc.)
+    "count": lambda _, value: value["days"],
+    "colors": {
+        "Vacation": "#4CAF50",
+        "Sick": "#F44336",
+        "Training": "#2196F3",
+        "Remote": "#FF9800"
+    },
+    "label_metric": lambda coords, value: (coords[2], value["days"]),
+    "label_formatter": lambda items: f"{sum(v[1] for v in items)} days"
+}
+
+chart = generate_chart_data(cube, chart_config)
 ```
-- Only includes **entries from 2023 where the department starts with "I"**.
 
 ---
 
-### **5️⃣ Filtering on Data Values**
+### 🧠 Advanced Filtering and Axis Ordering in Charts
+
+You can use the full power of the cube’s `.visit()` method within chart configs:
+
 ```python
-for coords, value in cube.visit(value_filter=lambda v: v["budget"] > 300000):
-    print(f"{coords}: {value}")
+chart_config = {
+    "type": "bar",
+    "visit": lambda cube: cube.visit(
+        axis_order=["Employee", "Year", "Type"],
+        sort_order={
+            "Employee": SortOrder.ASCENDING,
+            "Year": SortOrder.DESCENDING,
+            "Type": SortOrder.ASCENDING
+        },
+        filters={"Type": ["Vacation", "Remote"]}
+    ),
+    "x": lambda coords, _: f"{coords[0]} ({coords[1]})",  # Employee (Year)
+    "stack_by": lambda coords, _: coords[2],  # Type
+    "count": lambda _, value: value["days"],
+    "colors": {"Vacation": "#4CAF50", "Remote": "#FF9800"},
+}
 ```
-- Visits **only locations where budget > 300K**.
 
 ---
 
-### **6️⃣ Using a Callback Function**
+## 🔒 Metadata Support
+
+Each axis and value can have rich metadata attached:
+
 ```python
-def process_entry(coords, value):
-    print(f"{coords}: {value}")
+employee_axis = cube.get_axis_by_name("Employee")
+employee_axis.set_metadata("Alice", "team", "Engineering")
+employee_axis.set_metadata("Bob", "team", "Sales")
 
-cube.visit(callback=process_entry)
+print(employee_axis.get_metadata("Bob", "team"))  # Sales
 ```
-- **Processes each entry in real-time** instead of storing results.
 
 ---
 
-## 📦 **Serialization (`to_dict`, `from_dict`)**
-### **Save Cube to JSON**
+## 📦 Serialization & Interoperability
+
 ```python
 import json
 
-cube_data = cube.to_dict()
 with open("cube.json", "w") as f:
-    json.dump(cube_data, f)
+    json.dump(cube.to_dict(), f)
+
+# Later
+from datacube import DustStatDataCubeStructured
+
+with open("cube.json") as f:
+    cube = DustStatDataCubeStructured.from_dict(json.load(f))
 ```
 
-### **Load Cube from JSON**
-```python
-with open("cube.json", "r") as f:
-    cube_data = json.load(f)
+---
 
-loaded_cube = DustStatDataCubeNumeric.from_dict(cube_data)
-```
+## 🧠 Designed for Developers
+
+- Modular, flexible, and JSON/YAML serializable
+- Can be plugged into async pipelines, GCS storage, dashboards, or CLI tools
+- Easily extended with new chart types or cube features
