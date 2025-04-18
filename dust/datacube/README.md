@@ -30,21 +30,21 @@ cube = DustStatDataCubeStructured("TimeOff", [
 cursor = DustStatDataCubeStructured.Cursor(cube)
 
 # Populate cube with structured values
-cursor.set_coordinate("Alice", cube.get_axis_by_name("Employee"))
-cursor.set_coordinate("2024", cube.get_axis_by_name("Year"))
-cursor.set_coordinate("Vacation", cube.get_axis_by_name("Type"))
+cursor.set_coordinate("Alice", cube.axes()[0])
+cursor.set_coordinate("2024", cube.axes()[1])
+cursor.set_coordinate("Vacation", cube.axes()[2])
 cursor.set_value({"days": 12})
 
-cursor.set_coordinate("Alice", cube.get_axis_by_name("Type"))
-cursor.set_coordinate("Sick", cube.get_axis_by_name("Type"))
+cursor.set_coordinate("Alice", cube.axes()[2])
+cursor.set_coordinate("Sick", cube.axes()[2])
 cursor.set_value({"days": 3})
 
-cursor.set_coordinate("Bob", cube.get_axis_by_name("Type"))
-cursor.set_coordinate("Training", cube.get_axis_by_name("Type"))
+cursor.set_coordinate("Bob", cube.axes()[2])
+cursor.set_coordinate("Training", cube.axes()[2])
 cursor.set_value({"days": 5})
 
-cursor.set_coordinate("Bob", cube.get_axis_by_name("Type"))
-cursor.set_coordinate("Remote", cube.get_axis_by_name("Type"))
+cursor.set_coordinate("Bob", cube.axes()[2])
+cursor.set_coordinate("Remote", cube.axes()[2])
 cursor.set_value({"days": 20})
 ```
 
@@ -139,7 +139,7 @@ chart_config = {
 Each axis and value can have rich metadata attached:
 
 ```python
-employee_axis = cube.get_axis_by_name("Employee")
+employee_axis = cube.axes()[0]
 employee_axis.set_metadata("Alice", "team", "Engineering")
 employee_axis.set_metadata("Bob", "team", "Sales")
 
