@@ -83,22 +83,23 @@ The `chartui.py` module provides:
 
 ---
 
-### ✅ Example: Days Off per Employee (Grouped by Type)
+### ✅ Example: Days Off per Year (Grouped by Type)
 
 ```python
 from chartui import generate_chart_data
 
 chart_config = {
     "type": "bar",
-    "visit": lambda cube: cube.visit(),
-    "x": lambda coords, _: coords[0],  # Employee
-    "stack_by": lambda coords, _: coords[2],  # Type (Vacation, Sick, etc.)
+    "visit": lambda cube: cube.visit(
+        axis_order=["Year", "Type", "Employee"],
+        sort_order={"Year": SortOrder.ASCENDING, "Type": SortOrder.ASCENDING, "Employee": SortOrder.ASCENDING}
+    ),
+    "x": lambda coords, _: f"{coords[0]} - {coords[1]}",  # Year - Type
+    "stack_by": lambda coords, _: coords[2],  # Employee
     "count": lambda _, value: value["days"],
     "colors": {
-        "Vacation": "#4CAF50",
-        "Sick": "#F44336",
-        "Training": "#2196F3",
-        "Remote": "#FF9800"
+        "Alice": "#4CAF50",
+        "Bob": "#2196F3"
     },
     "label_metric": lambda coords, value: (coords[2], value["days"]),
     "label_formatter": lambda items: f"{sum(v[1] for v in items)} days"
@@ -170,3 +171,5 @@ with open("cube.json") as f:
 - Modular, flexible, and JSON/YAML serializable
 - Can be plugged into async pipelines, GCS storage, dashboards, or CLI tools
 - Easily extended with new chart types or cube features
+
+---
