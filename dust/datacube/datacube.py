@@ -15,12 +15,6 @@ from typing import List, Dict, Tuple, Union, Optional, Callable, Generator
 from enum import Enum
 from abc import ABC, abstractmethod
 
-class AggregationOperation(Enum):
-    SUM = "sum"
-    AVG = "avg"
-    MIN = "min"
-    MAX = "max"
-
 class SortOrder(Enum):
     ASCENDING = "asc"
     DESCENDING = "desc"
@@ -410,81 +404,6 @@ class DustStatDataCubeStructured(DustStatDataCube):
 
         # Yield original logical coords and values
         for _, logical_coords, index_coords in coord_map:
-            yield logical_coords, self.values[index_coords]
-
-    def visit_old(
-        self,
-        axis_order: Optional[List[str]] = None,
-        sort_order: Optional[Dict[str, SortOrder]] = None,
-        filters: Optional[Dict[str, List[str]]] = None
-    ) -> Generator[Tuple[Tuple[str, ...], Dict], None, None]:
-        """
-        Efficient two-pass visit: filters coords, sorts them, then yields in order.
-        """
-
-        def coord_sort_key(coord):
-            # Build coord reordered to match ordered_axes
-            reordered = [coord[axis_position_map[axis.name]] for axis in ordered_axes]
-
-            key = []
-            for i, axis in enumerate(ordered_axes):
-                value = reordered[i]
-                direction = axis_sort_preferences[axis.name]
-                if direction == SortOrder.DESCENDING:
-                    key.append((False, value))  # Reverse sort
-                elif direction == SortOrder.ASCENDING:
-                    key.append((True, value))   # Normal sort
-                else:
-                    key.append((None, axis.categories().index(value)))  # Keep declared order
-            return key
-
-        axis_position_map = {axis.name: i for i, axis in enumerate(self._axes)}
-
-        # Determine axis order (default: cube's natural order)
-        if axis_order:
-            ordered_axes = [axis for axis in self._axes if axis.name in axis_order]
-            ordered_axes += [axis for axis in self._axes if axis.name not in axis_order]  # Preserve natural order for unspecified axes
-        else:
-            ordered_axes = self._axes[:]  # Use natural order if no custom order is provided
-
-        # Precompute the sorting direction per axis
-        axis_sort_preferences = {
-            axis.name: sort_order[axis.name]
-            if sort_order and axis.name in sort_order
-            else None  # None means preserve category order
-            for axis in ordered_axes
-        }
-
-        # Pass 1: Filter and collect logical coordinates
-        filtered_coords = []
-
-        for index_coords in self.values:
-            logical_coords = tuple(
-                axis.categories()[idx] for axis, idx in zip(self._axes, index_coords)
-            )
-
-            # Apply axis/category filters
-            if filters:
-                skip = False
-                for axis_name, allowed in filters.items():
-                    if allowed is None:
-                        continue  # No filtering for this axis
-                    pos = axis_position_map[axis_name]
-                    if logical_coords[pos] not in allowed:
-                        skip = True
-                        break
-                if skip:
-                    continue
-
-            filtered_coords.append(logical_coords)
-
-        filtered_coords.sort(key=coord_sort_key)
-
-        # Yield in sorted order
-        for logical_coords in filtered_coords:
-            index_coords = tuple(
-                axis.get_index(cat) for axis, cat in zip(self._axes, logical_coords)
-            )
             yield logical_coords, self.values[index_coords]
 
     class Cursor:
