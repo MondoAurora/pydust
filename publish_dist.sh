@@ -1,3 +1,3 @@
 rm -rf dist
-pip install build
-twine upload dist/*
+python3 -m build -v
+#twine upload dist/*
