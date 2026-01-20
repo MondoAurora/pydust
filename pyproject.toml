@@ -24,3 +24,6 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/MondoAurora/pydust"
+
+[tool.setuptools.packages.find]
+where = ["dust"]
