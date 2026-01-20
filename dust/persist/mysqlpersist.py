@@ -250,6 +250,8 @@ class MySQLPersist(SqlPersist):
         elif field.datatype == Datatypes.ENTITY and isinstance(value, Entity):
             return value.global_id()
         elif SQL_TYPE_MAP[field.datatype] == "TEXT":
+            if value is not None and isinstance(value, float):
+                pass
             if value is not None and len(value) > 65500:
                 print(f"Trunctating value to 65500 for {field.name}")
                 return value[:65500]
