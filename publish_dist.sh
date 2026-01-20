@@ -1,3 +1,3 @@
-rm dist/PyDust-*
-python3 setup.py bdist_wheel sdist
+rm -rf dist
+pip install build
 twine upload dist/*
