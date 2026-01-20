@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pydust"
-version = "0.1.3"
+version = "0.1.6"
 description = "A lightweight dependency-aware plugin framework for Python"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -26,4 +26,4 @@ dependencies = [
 Homepage = "https://github.com/MondoAurora/pydust"
 
 [tool.setuptools.packages.find]
-where = ["dust"]
+where = ["."]

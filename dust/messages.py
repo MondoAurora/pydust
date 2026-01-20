@@ -65,16 +65,21 @@ _listeners = {}
 def signal_finish():
     global _stop
 
-    _queue.join()
-    _stop = True
-    _queue.put(Store.access(Operation.GET, None, UNIT_MESSAGES, None, MessageTypes.message))
+    _queue.join()         # wait for all tasks
+    _stop = True         # tell worker to exit
+    _queue_processor.join(timeout=5)  # wait for exit
 
 def start_queue_processor(queue, log):
     global _stop
 
+    processed = False
+
     while True:
+        processed = False
+
         try:
             entity = _queue.get(block=False)
+            processed = True
             if entity == None:
                 time.sleep(0.5)
             else:
@@ -101,7 +106,10 @@ def start_queue_processor(queue, log):
         except:
             traceback.print_exc()
         finally:
-            _queue.task_done()
+            if processed:
+                _queue.task_done()
+
+    print("Messaging worker exiting")
 
 def create_message(message_type, message_params, entities):
     for callback_name, listener in _listeners.items():
